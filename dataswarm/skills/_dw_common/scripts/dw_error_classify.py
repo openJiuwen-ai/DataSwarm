@@ -22,6 +22,8 @@ _TABLE_NOT_FOUND_RE = re.compile(
     r"Catalog Error: Table with name .+ not found"
 )
 _COLUMN_NOT_FOUND_RE = re.compile(r"Catalog Error: Column with name .+ does not exist")
+# 裸表名在多个 schema 下同名：不是拼写错误，也不是服务故障——改写全限定名即可。
+_AMBIGUOUS_TABLE_RE = re.compile(r"is ambiguous across schemas", re.IGNORECASE)
 _SYNTAX_RE = re.compile(
     r"errCode\s*=\s*2|mismatched input|Parse error|Syntax error|syntax error"
     r"|\(1064,|\(1105,|ParserException|Binder Error|Catalog Error",
@@ -46,6 +48,8 @@ def classify_error(exc: Exception) -> tuple[str, str, bool]:
         return "PERMISSION_DENIED", msg, False
     if _has_code(3024, 20101) or "Query timeout" in msg:
         return "TIMEOUT", msg, True
+    if _AMBIGUOUS_TABLE_RE.search(msg):
+        return "AMBIGUOUS_TABLE", msg, True
     if _TABLE_NOT_FOUND_RE.search(msg):
         return "TABLE_NOT_FOUND", msg, False
     if _COLUMN_NOT_FOUND_RE.search(msg):
@@ -61,6 +65,7 @@ def classify_error(exc: Exception) -> tuple[str, str, bool]:
 SUGGESTIONS: dict[str, str] = {
     "PERMISSION_DENIED": "联系 DBA 申请该表的 select 权限",
     "TABLE_NOT_FOUND": "确认表名拼写或检查 information_schema.tables",
+    "AMBIGUOUS_TABLE": '表名在多个 schema 下同名，改用全限定名（如 "schema"."table"）',
     "COLUMN_NOT_FOUND": "确认列名拼写，用 get_schema.py 重新拉取表结构",
     "SYNTAX_ERROR": "检查 SQL 语法，参考 SQL 方言注意事项",
     "TIMEOUT": "添加 LIMIT 或收紧 WHERE 条件后重试",

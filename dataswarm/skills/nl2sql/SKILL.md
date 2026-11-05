@@ -52,7 +52,8 @@ python -m jiuwenswarm.cli.dwcli datasource current   # 输出 business_db_ref（
 - 成功：stdout 一个 JSON 对象，退出码 0
 - 失败：stderr 一个 JSON 对象，退出码 1，形如
   `{"ok": false, "error": {"kind": "...", "why": "...", "hint": "...", "retry": false, "stage": "..."}}`
-  - `kind`：PERMISSION_DENIED / TABLE_NOT_FOUND / COLUMN_NOT_FOUND / SYNTAX_ERROR / TIMEOUT / UNKNOWN / MISSING_CONFIG 等
+  - `kind`：PERMISSION_DENIED / TABLE_NOT_FOUND / AMBIGUOUS_TABLE / COLUMN_NOT_FOUND / SYNTAX_ERROR / TIMEOUT / UNKNOWN / MISSING_CONFIG 等
+    （`AMBIGUOUS_TABLE`：裸表名在多个 schema 下同名，按 `why` 里列出的候选改用全限定名重试）
   - `why` 原始报错，`hint` 建议的修法，`retry` 为 true 表示改 SQL 后值得再试
   - `stage` 只有 SQL 类脚本才带：`SQL_EXPLAIN`（预检阶段）/ `SQL_EXECUTION`（正式执行阶段）
 

@@ -97,11 +97,14 @@ def _dwcli(*args: str, timeout: int | None = None) -> dict:
             time.sleep(1.0 * (attempt + 1))
             continue
         break
-    if payload.get("status") == "error" or payload.get("error_code") in (
+    # 只把工作空间类错误包成 WorkspaceContextError；其余错误必须走 _err_msg
+    # 带出 detail——否则技能侧只能看到 "not_found" / "internal_error" 这类光秃秃
+    # 的错误名，hint 指向「查数据库日志」，真实原因全丢。
+    code = payload.get("error_code") or payload.get("error")
+    if code in (
             "WORKSPACE_CONTEXT_REQUIRED", "WORKSPACE_CONTEXT_CONFLICT",
             "DB_REF_NOT_ALLOWED", "DUPLICATE_METADATA_DB_REF"):
-        code = payload.get("error_code") or "WORKSPACE_CONTEXT_ERROR"
-        raise WorkspaceContextError(payload.get("error") or "dwcli 调用失败", code)
+        raise WorkspaceContextError(_err_msg(payload), code)
     if payload.get("status") == "error":
         raise RuntimeError(_err_msg(payload))
     if payload.get("http_code", 0) >= 400:
@@ -316,12 +319,18 @@ def tables(db_ref: str, role: str = "business") -> dict:
 
 
 def schema(db_ref: str, table: str, role: str = "business") -> dict:
-    """表结构。经 dwcli databases table。"""
+    """表结构。经 dwcli databases table。
+
+    ``resolved_table`` 是服务端目录里的规范表名：带 schema 的目录（DuckDB
+    原生库 / SQL Server）接受裸表名后返回全限定名，调用方据此拼后续 SQL。
+    """
     spec = parse_db_ref(db_ref)
     db_name = spec.get("database") or ""
     payload = _dwcli("databases", "table", "--db", db_name, "--table", table,
                      "--db-ref", db_ref)
-    return {"table": table, "columns": payload.get("columns", payload.get("fields", [])),
+    return {"table": table,
+            "resolved_table": payload.get("name") or table,
+            "columns": payload.get("columns", payload.get("fields", [])),
             "db": {"type": spec.get("type"), "ref": db_ref}}
 
 
