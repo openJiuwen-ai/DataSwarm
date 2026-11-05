@@ -1,0 +1,97 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# === Node.js / 前端 ===
+**/node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vite/
+
+# === 项目还原组装目录（assemble_build.py 产出） ===
+/build/
+
+# === 环境与凭据（永不入库） ===
+.env
+.env.*
+!.env.example
+*.p12
+*.cer
+*.mobileprovision
+AuthKey_*.p8
+
+# === IDE / 编辑器 / 系统杂项 ===
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+**/CLAUDE.local.md
+
+# === 运行产物 ===
+logs/
+artifact/
+.browser/
+.browser-profiles/
+.playwright-mcp/
+/data/
+/tmp/
+/memory/
+/sub_agents/
+/context/
+/.plans/
+report/index.html
+bash.EXE.stackdump
+
+# === .claude 个人资产（只入库 rules/） ===
+# settings / hooks / skills / commands / agents / worktrees / 会话产物等均本地私有：
+# 不入库；勿 git add -f 强加
+.claude/*
+!.claude/rules/
+
+# === 运行态 workspace（dataswarm/ 与 jiuwenswarm/ 两套前缀） ===
+# 注意：其下 skills/ 是技能开发目录（已入库），必须放行——勿整体忽略
+dataswarm/resources/agent/workspace/*
+!dataswarm/resources/agent/workspace/skills/
+jiuwenswarm/resources/agent/workspace/*
+!jiuwenswarm/resources/agent/workspace/skills/
+dataswarm/resources/data/
+jiuwenswarm/resources/data/
+dataswarm/channels/web/frontend/logs/
+jiuwenswarm/channels/web/frontend/logs/
+
+# === 本地数据目录误生成防护（巡检/演示数据库落仓库根时忽略） ===
+/olist
+/olist_warehouse
+/sqlite
+/m.db
+/meta.db
+/.jiuwenswarm/
+
+# === 运行态目录（build/ 内组件产生，防误收编） ===
+.jiuwen/
+# 桌面打包脚本 build-macos.sh 下载的 Node 运行时缓存（vendor/node），勿入库
+vendor/
+workspace/agent-data.json
+jiuwenswarm/agentserver/tools/browser-move/screenshots/
+jiuwenswarm/workspace/.whatsapp-auth/
+jiuwenswarm/resources/tui/bin/

@@ -1,0 +1,40 @@
+# 工程资产清单：仓库以文件形态直接携带下列路径，便于在仓库页浏览
+# - 完整项目内容以 dataswarm/patch/dataswarm.patch 为准（clone 基座 tag + apply patch
+#   即还原完整项目）；本清单所列文件与 patch 内容重复，仅供浏览
+# - scripts/ 只含 DataSwarm 工程资产，基座自带脚本随基座还原获得
+# - 映射关系：`项目路径: 仓库路径`（当前全部原样）
+
+sync:
+  # ---- DataSwarm 自研脚本 ----
+  scripts/ci: scripts/ci
+  scripts/dataswarm/_dataswarm_lib.py: scripts/dataswarm/_dataswarm_lib.py
+  scripts/dataswarm/assemble_build.py: scripts/dataswarm/assemble_build.py
+  scripts/dataswarm/build_dataswarm_dist.py: scripts/dataswarm/build_dataswarm_dist.py
+  scripts/dataswarm/codecheck_rules.json: scripts/dataswarm/codecheck_rules.json
+  scripts/dataswarm/codecheck_scan.py: scripts/dataswarm/codecheck_scan.py
+  scripts/dataswarm/release_dataswarm.py: scripts/dataswarm/release_dataswarm.py
+  scripts/dataswarm/sync_manifest.yaml: scripts/dataswarm/sync_manifest.yaml
+  scripts/dev: scripts/dev
+  scripts/dw-ops: scripts/dw-ops
+  scripts/verify: scripts/verify
+  # ---- 工程资产 ----
+  deploy/schema: deploy/schema
+  examples: examples
+  # ---- DataSwarm 产物文档（docs/ 下仅列 DataSwarm 专属文档，基座文档随基座还原自带）----
+  docs/README.md: docs/README.md
+  docs/en/DataSwarmInstallGuideWHL.md: docs/en/DataSwarmInstallGuideWHL.md
+  docs/zh/DataSwarmWHL安装指南.md: docs/zh/DataSwarmWHL安装指南.md
+  # ---- 顶层文档（对外）----
+  README.md: README.md
+  README.zh.md: README.zh.md
+  CONTRIBUTING.md: CONTRIBUTING.md
+  SECURITY.md: SECURITY.md
+  TESTING.md: TESTING.md
+  LICENSE: LICENSE
+  OPEN_SOURCE_SOFTWARE_NOTICE.md: OPEN_SOURCE_SOFTWARE_NOTICE.md
+  # ---- 构建配置 ----
+  pyproject.toml: pyproject.toml
+  pytest.ini: pytest.ini
+  uv.lock: uv.lock
+  .gitignore: .gitignore
+  .gitattributes: .gitattributes

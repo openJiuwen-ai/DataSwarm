@@ -1,0 +1,8 @@
+# data-insight 技能依赖
+#
+#     <venv-python> -m pip install -r <skill-dir>/requirements.txt
+#
+# scipy 供 driver_correlation 使用；未安装时该 op 返回 dependency_missing。
+pandas>=2.2
+numpy>=1.26
+scipy>=1.11

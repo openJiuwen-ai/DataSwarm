@@ -1,0 +1,453 @@
+{
+ "source": "docs/mr_ruleset_202601024103121.xlsx（CodeArts Check MR 门禁规则集导出）",
+ "aligned_at": "2026-10-27",
+ "note": "对齐口径=规则编号（云端与本地引擎 UUID 体系有漂移，编号才稳定）。豁免语义是「规则×场景」而非规则级：scene_waived 仅作标注，命中不吞（新引入真问题须可见），人工对照 docs/scan-waivers.md 定性场景；systematic_fp 为本仓库检测模式整体失效的规则，命中自动归误报组。豁免台账更新时应同步此文件。",
+ "rules": {
+  "G.FMT.01": {
+   "level": "一般",
+   "desc": "程序块应该采用4个空格缩进风格编写"
+  },
+  "G.FMT.04": {
+   "level": "一般",
+   "desc": "用空格突出关键字和重要信息",
+   "scene_waived": "空格：手工列对齐约定（一.10）"
+  },
+  "G.CMT.04": {
+   "level": "一般",
+   "desc": "代码的注释位置和格式应该在项目内保持统一"
+  },
+  "G.FMT.03": {
+   "level": "一般",
+   "desc": "合理安排空行--类内方法空1行"
+  },
+  "G.FMT.06": {
+   "level": "一般",
+   "desc": "每行只能导入一个模块"
+  },
+  "G.FMT.08": {
+   "level": "一般",
+   "desc": "一行只写一条语句"
+  },
+  "G.TYP.08": {
+   "level": "严重",
+   "desc": "必须使用isinstance判断变量类型"
+  },
+  "G.IMP.02": {
+   "level": "一般",
+   "desc": "使用 from ... import ... 语句的注意事项"
+  },
+  "G.CNP.01": {
+   "level": "一般",
+   "desc": "建议为communicate传入超时参数来防止子进程死锁或失去响应"
+  },
+  "G.TYP.05": {
+   "level": "一般",
+   "desc": "对序列使用切片操作时，不建议使用负步进值进行切片"
+  },
+  "G.FNM.06": {
+   "level": "一般",
+   "desc": "使用return代替StopIteration来结束生成器"
+  },
+  "G.EDV.01": {
+   "level": "致命",
+   "desc": "禁止使用eval和exec函数执行不可信代码"
+  },
+  "G.EDV.02": {
+   "level": "致命",
+   "desc": "禁止使用OS命令解析器或“危险函数”调用系统命令"
+  },
+  "G.FIO.01": {
+   "level": "严重",
+   "desc": "在多用户系统中创建文件时应根据需要指定合适的权限"
+  },
+  "G.SER.01": {
+   "level": "致命",
+   "desc": "禁止使用pickle.load、_pickle.load和shelve模块加载外部数据"
+  },
+  "G.OPR.01": {
+   "level": "严重",
+   "desc": "对除法运算和模运算中的除数为0的情况做相应保护"
+  },
+  "G.ERR.08": {
+   "level": "一般",
+   "desc": "禁止通过异常泄露敏感数据"
+  },
+  "G.LOG.02": {
+   "level": "一般",
+   "desc": "使用日志记录工具实现日志功能",
+   "scene_waived": "print 输出：skill/CLI 惯例豁免，服务代码是真问题（台账 一.1）"
+  },
+  "G.SER.02": {
+   "level": "严重",
+   "desc": "禁止序列化未加密的敏感数据"
+  },
+  "G.ERR.07": {
+   "level": "一般",
+   "desc": "避免抑制或忽略异常",
+   "scene_waived": "抑制异常：有意兜底（一.6）"
+  },
+  "G.TES.01": {
+   "level": "一般",
+   "desc": "禁止在生产版本的业务代码中使用assert"
+  },
+  "G.SER.04": {
+   "level": "严重",
+   "desc": "禁止使用jsonpickle模块的encode/decode或dumps/loads函数"
+  },
+  "G.FIO.03": {
+   "level": "严重",
+   "desc": "禁止使用tempfile.mktemp创建临时文件"
+  },
+  "G.PRJ.03": {
+   "level": "致命",
+   "desc": "产品代码不要包含任何调试入口点"
+  },
+  "G.DSP.03": {
+   "level": "严重",
+   "desc": "必须使用ssl.SSLSocket代替socket.Socket来进行安全数据交互"
+  },
+  "G.SER.03": {
+   "level": "严重",
+   "desc": "禁止使用yaml模块的load函数"
+  },
+  "G.DSP.02": {
+   "level": "严重",
+   "desc": "安全场景下必须使用密码学意义上的安全随机数"
+  },
+  "G.EDV.03": {
+   "level": "致命",
+   "desc": "避免在命令解析器中使用通配符"
+  },
+  "G.LOG.03": {
+   "level": "严重",
+   "desc": "禁止直接使用外部数据记录日志"
+  },
+  "G.LOG.01": {
+   "level": "一般",
+   "desc": "logging模块应尽量使用懒插值的能力记录debug等低级别日志"
+  },
+  "G.FIO.02": {
+   "level": "严重",
+   "desc": "校验文件路径之前应该先对其进行规范化处理"
+  },
+  "G.EDV.08": {
+   "level": "致命",
+   "desc": "防止正则表达式引起的ReDos攻击"
+  },
+  "G.FIO.04": {
+   "level": "严重",
+   "desc": "临时文件使用完毕应及时删除"
+  },
+  "G.PRM.03": {
+   "level": "严重",
+   "desc": "资源的申请和释放需要成对使用，包括正常和异常场景",
+   "systematic_fp": "fd 交 os.fdopen 接管等场景（二）"
+  },
+  "G.DSP.04": {
+   "level": "一般",
+   "desc": "禁止在用户界面、日志中暴露不必要信息"
+  },
+  "G.DSP.01": {
+   "level": "一般",
+   "desc": "将敏感对象发送出信任区域前进行签名并加密"
+  },
+  "G.EDV.06": {
+   "level": "致命",
+   "desc": "禁止直接使用外部数据来拼接SQL语句"
+  },
+  "G.EDV.05": {
+   "level": "一般",
+   "desc": "调用外部可执行程序时建议使用绝对路径"
+  },
+  "G.EDV.04": {
+   "level": "严重",
+   "desc": "禁止使用subprocess模块中的shell=True选项",
+   "scene_waived": "shell=True：仅 Windows cmd 分支（cmd 无 -c 等价物），shell 执行器本体契约（2026-10-27 核实）"
+  },
+  "G.EDV.07": {
+   "level": "严重",
+   "desc": "不受信任的外部数据禁止使用.format()进行格式化"
+  },
+  "G.FIO.06": {
+   "level": "一般",
+   "desc": "解压文件必须进行安全检查"
+  },
+  "G.EDV.10": {
+   "level": "严重",
+   "desc": "禁止在处理XML数据时解析不可信的实体"
+  },
+  "G.EDV.09": {
+   "level": "严重",
+   "desc": "禁止直接使用外部数据来拼接XML"
+  },
+  "G.PSL.02": {
+   "level": "一般",
+   "desc": "在datetime的使用过程中注意时区的影响，时区敏感的场景建议显式指定时区",
+   "scene_waived": "datetime 时区：本地时间戳豁免，入库时间戳待专项（一.7）"
+  },
+  "G.OPR.06": {
+   "level": "一般",
+   "desc": "应该使用 not in 测试成员关系"
+  },
+  "G.OPR.05": {
+   "level": "严重",
+   "desc": "应该使用 is not 运算符而不是not ... is"
+  },
+  "G.OPR.03": {
+   "level": "严重",
+   "desc": "禁止使用is或is not运算符在内置类型之间作比较"
+  },
+  "G.OPR.02": {
+   "level": "一般",
+   "desc": "与None作比较要使用is或is not，不要使用等号"
+  },
+  "G.NAM.03": {
+   "level": "一般",
+   "desc": "“self”应是实例方法的第一个参数，“cls”应是类方法的第一个参数--cls"
+  },
+  "G.NAM.05": {
+   "level": "一般",
+   "desc": "除了需要重写魔法函数、对象之外，不推荐使用双下划线开头且双下划线结尾的标识符来命名一般对象"
+  },
+  "G.FMT.02": {
+   "level": "一般",
+   "desc": "行宽不超过120个字符"
+  },
+  "G.FMT.10": {
+   "level": "一般",
+   "desc": "代码行的行尾结束符LF和CRLF不应该混用"
+  },
+  "G.TYP.04": {
+   "level": "一般",
+   "desc": "建议使用if seq或if not seq的方式判断序列是否为空"
+  },
+  "G.ERR.14": {
+   "level": "严重",
+   "desc": "不要使用return、break、continue或抛出异常使finally块非正常结束--不支持finally中的continue"
+  },
+  "G.CLS.09": {
+   "level": "严重",
+   "desc": "重写类的魔法函数时必须返回其原型指定的类型--iter"
+  },
+  "G.NAM.01": {
+   "level": "一般",
+   "desc": "使用统一的命名风格",
+   "scene_waived": "命名风格：框架协议名/stdlib 覆写（一.11）"
+  },
+  "G.CMT.02": {
+   "level": "一般",
+   "desc": "类的文档字符串写在类声明(class ClassName:)所在行的下一行，并向后缩进4个空格",
+   "systematic_fp": "docstring 位置误判（二）"
+  },
+  "G.CMT.03": {
+   "level": "一般",
+   "desc": "公共函数的文档字符串写在函数声明(def function_name(param):)所在行的下一行，并向后缩进4个空格",
+   "systematic_fp": "扫描器解析多行签名出错，代码符合 PEP 257（台账 二）"
+  },
+  "G.CMT.01": {
+   "level": "一般",
+   "desc": "模块文档字符串写在文件的顶部，Shebang和文件编码声明之后，导入(imports) 部分之前的位置，不需要缩进"
+  },
+  "G.CTL.04": {
+   "level": "一般",
+   "desc": "建议使用 for x in iterable 的方式循环处理可迭代对象"
+  },
+  "G.FMT.07": {
+   "level": "一般",
+   "desc": "导入部分(imports)应该按照标准库、第三方库、应用程序自定义模块的顺序排列导入",
+   "systematic_fp": "jiuwenswarm.* 误判第三方；导入区赋值重排有害（二）"
+  },
+  "G.ERR.10": {
+   "level": "一般",
+   "desc": "同时使用多个except语句时，要注意异常捕获的顺序"
+  },
+  "G.FNM.01": {
+   "level": "严重",
+   "desc": "禁止使用可变对象作为参数默认值"
+  },
+  "G.ERR.03": {
+   "level": "严重",
+   "desc": "异常的类型定义必须继承自Exception"
+  },
+  "G.ERR.02": {
+   "level": "一般",
+   "desc": "用异常来表示异常，而不是用返回值表示异常"
+  },
+  "G.CLS.10": {
+   "level": "严重",
+   "desc": "未实现的数值运算类型魔法函数必须返回NotImplemented而不是抛出NotImplementedError"
+  },
+  "G.FNM.04": {
+   "level": "严重",
+   "desc": "不要将没有返回值的函数调用结果赋值给变量"
+  },
+  "G.FNM.03": {
+   "level": "一般",
+   "desc": "当函数参数个数较多且有相关性时，建议通过class/namedtuple/dataclass等具名形式进行封装"
+  },
+  "G.CLS.07": {
+   "level": "一般",
+   "desc": "类的方法不需要访问实例时，建议定义为staticmethod或classmethod",
+   "scene_waived": "staticmethod 建议：pytest 惯例（一.3）"
+  },
+  "G.CTL.03": {
+   "level": "一般",
+   "desc": "避免在条件/循环控制语句中包含过多的条件",
+   "scene_waived": "条件过多：路由分派谓词（一.11）"
+  },
+  "G.VAR.03": {
+   "level": "严重",
+   "desc": "禁止覆盖外部作用域中的标识符"
+  },
+  "G.FNM.05": {
+   "level": "一般",
+   "desc": "当函数返回值个数较多时，建议通过class/namedtuple/dataclass等具名形式进行封装",
+   "scene_waived": "返回值过多：DB 行元组工厂（一.11）"
+  },
+  "G.NAM.04": {
+   "level": "一般",
+   "desc": "避免在无关的标识符或无关的概念之间重用名字， 避免因重名而导致的意外赋值和错误引用",
+   "scene_waived": "内建名遮蔽：stdlib API/框架协议形参透传（一.11 无害遮蔽）"
+  },
+  "G.CTL.01": {
+   "level": "严重",
+   "desc": "同一个函数所有分支的返回值类型和个数保持一致",
+   "scene_waived": "返回不一致：CLI 早退惯例（一.11）"
+  },
+  "G.VAR.01": {
+   "level": "严重",
+   "desc": "禁止在变量的生命周期内修改其类型"
+  },
+  "G.TYP.07": {
+   "level": "一般",
+   "desc": "使用dict[key]获取 value 时需要注意保证 key 在有效的范围内",
+   "systematic_fp": "有守卫/构造保证的 dict 直取，盲改 .get() 反吞缺陷（二）"
+  },
+  "G.CTL.02": {
+   "level": "严重",
+   "desc": "所有的代码都必须是逻辑可达的"
+  },
+  "G.TYP.01": {
+   "level": "一般",
+   "desc": "需要精确数值计算的场景，应使用decimal模块，且不要用浮点数构造Decimal"
+  },
+  "G.EXP.03": {
+   "level": "一般",
+   "desc": "不应将lambda表达式赋值给变量，应该使用常规函数",
+   "scene_waived": "lambda 赋值：测试替身惯例（一.9）"
+  },
+  "G.PRJ.04": {
+   "level": "一般",
+   "desc": "建议同一项目内的编码方式保持一致，推荐使用UTF-8"
+  },
+  "G.TYP.06": {
+   "level": "严重",
+   "desc": "同一个字典表达式中各个键值不要相同"
+  },
+  "G.TYP.02": {
+   "level": "严重",
+   "desc": "浮点型数据判断相等不要直接使用=="
+  },
+  "G.OPR.04": {
+   "level": "一般",
+   "desc": "不建议使用海象运算符",
+   "scene_waived": "海象运算符：仓库未禁（一.11）"
+  },
+  "G.CLS.08": {
+   "level": "一般",
+   "desc": "避免在__init__方法外定义类实例属性",
+   "scene_waived": "__init__ 外属性：fake/recorder 惯例（一.11）"
+  },
+  "G.CLS.11": {
+   "level": "一般",
+   "desc": "避免在类外或者子类中访问父类受保护的成员",
+   "scene_waived": "受保护成员：测试白盒/web 事实 API 豁免（一.2）"
+  },
+  "G.CLS.01": {
+   "level": "严重",
+   "desc": "如果子类和父类中都有__init__方法，则子类中的__init__方法必须正确调用其父类__init__方法"
+  },
+  "G.CLS.02": {
+   "level": "一般",
+   "desc": "子类重写父类的方法时，方法签名应该和被重写的方法一致"
+  },
+  "G.PSL.04": {
+   "level": "一般",
+   "desc": "建议用functools.wraps定义函数装饰器"
+  },
+  "G.ERR.11": {
+   "level": "一般",
+   "desc": "避免使用SystemExit和sys.exit()，主进程入口中例外",
+   "scene_waived": "SystemExit：CLI 入口契约（一.4）"
+  },
+  "G.PSL.01": {
+   "level": "一般",
+   "desc": "避免使用已经被标记为弃用并有明确替代的方法"
+  },
+  "G.CMT.05": {
+   "level": "一般",
+   "desc": "正式交付给客户的代码不应包含TODO/FIXME注释"
+  },
+  "G.VAR.02": {
+   "level": "严重",
+   "desc": "禁止使用global关键字声明不存在的外部变量"
+  },
+  "G.FNM.02": {
+   "level": "严重",
+   "desc": "函数和lambda表达式不应该使用外部的循环代码中定义的变量",
+   "scene_waived": "闭包捕获循环变量：即定义即调用（一.11）"
+  },
+  "G.ERR.05": {
+   "level": "严重",
+   "desc": "使用有明确业务属性的异常类型"
+  },
+  "G.ERR.13": {
+   "level": "一般",
+   "desc": "捕获异常后避免直接重新抛出",
+   "scene_waived": "捕获即重抛：异常路由守卫（一.11）"
+  },
+  "G.ERR.04": {
+   "level": "一般",
+   "desc": "对异常做类型转换时要保留原始异常的错误调用栈信息"
+  },
+  "G.ERR.09": {
+   "level": "严重",
+   "desc": "在单个except代码块内，禁止重复捕获同类异常",
+   "scene_waived": "父子重复捕获：自文档化（一.11）"
+  },
+  "G.FIO.05": {
+   "level": "一般",
+   "desc": "构造文件路径时应屏蔽操作系统的差异，建议使用库函数辅助构造",
+   "systematic_fp": "HTTP URL 拼接非文件路径（二）"
+  },
+  "G.TES.02": {
+   "level": "一般",
+   "desc": "使用对应的方法做值断言",
+   "systematic_fp": "测试断言方式误报（二）"
+  },
+  "G.EXP.04": {
+   "level": "一般",
+   "desc": "推导式和生成器表达式仅用于简单的逻辑表达",
+   "scene_waived": "推导式复杂：仓库主流风格（一.8）"
+  },
+  "G.PSL.03": {
+   "level": "一般",
+   "desc": "修改sys.path时注意避免模块重名问题",
+   "scene_waived": "sys.path：skill 就近解析架构约定（一.5）"
+  },
+  "G.NAM.02": {
+   "level": "一般",
+   "desc": "命名要有明确含义，以提升代码的可读性",
+   "scene_waived": "命名含义：历史命名（一.11）"
+  },
+  "G.IMP.03": {
+   "level": "一般",
+   "desc": "避免使用__import__函数"
+  },
+  "G.ERR.06": {
+   "level": "一般",
+   "desc": "raise语句必须包含异常实例",
+   "systematic_fp": "except 块内裸 raise 标准重抛（二）"
+  }
+ }
+}

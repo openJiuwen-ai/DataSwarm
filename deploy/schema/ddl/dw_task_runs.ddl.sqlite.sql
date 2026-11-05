@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS "dw_task_runs" (
+  "run_id" TEXT,
+  "instance_id" TEXT,
+  "task_id" TEXT,
+  "node_id" TEXT,
+  "node_name" TEXT,
+  "status" TEXT,
+  "started_at" TEXT,
+  "finished_at" TEXT,
+  "sla_time" TEXT,
+  "duration_s" REAL,
+  "exit_code" INTEGER,
+  "output_rows" INTEGER,
+  "retry_count" INTEGER,
+  "stdout_path" TEXT,
+  "stderr_path" TEXT,
+  "error_message" TEXT,
+  "result_summary" TEXT,
+  "start_ts" TEXT,
+  "end_ts" TEXT,
+  PRIMARY KEY ("run_id")
+);

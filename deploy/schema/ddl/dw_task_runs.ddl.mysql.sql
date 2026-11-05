@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS `dw_task_runs` (
+  `run_id`         VARCHAR(100) NOT NULL,
+  `instance_id`    VARCHAR(100) NULL,
+  `task_id`        VARCHAR(100) NULL,
+  `node_id`        VARCHAR(100) NULL,
+  `node_name`      VARCHAR(200) NULL,
+  `status`         VARCHAR(20)  NULL,
+  `started_at`     VARCHAR(30)  NULL,
+  `finished_at`    VARCHAR(30)  NULL,
+  `sla_time`       VARCHAR(30)  NULL,
+  `duration_s`     DOUBLE       NULL,
+  `exit_code`      INT          NULL,
+  `output_rows`    BIGINT       NULL,
+  `retry_count`    INT          NULL,
+  `stdout_path`    VARCHAR(500) NULL,
+  `stderr_path`    VARCHAR(500) NULL,
+  `error_message`  TEXT       NULL,
+  `result_summary` TEXT       NULL,
+  `start_ts`       VARCHAR(30)  NULL,
+  `end_ts`         VARCHAR(30)  NULL,
+  PRIMARY KEY (`run_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

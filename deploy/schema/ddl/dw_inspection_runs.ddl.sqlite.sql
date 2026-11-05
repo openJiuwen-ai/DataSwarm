@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS "dw_inspection_runs" (
+  "run_id" TEXT,
+  "db_ref_alias" TEXT,
+  "db_identity" TEXT,
+  "db_type" TEXT,
+  "status" TEXT,
+  "persistence_status" TEXT,
+  "started_at" TEXT,
+  "finished_at" TEXT,
+  "artifact_dir" TEXT,
+  "session_id" TEXT,
+  "workspace_id" TEXT,
+  "health_scores_json" TEXT,
+  "summary_json" TEXT,
+  "created_at" TEXT,
+  -- 历史报告预留（首装即终态）,
+  "db_name" TEXT,
+  "inspected_tables_json" TEXT,
+  "report_start" TEXT,
+  "report_end" TEXT,
+  "reported_at" TEXT,
+  PRIMARY KEY ("run_id")
+);

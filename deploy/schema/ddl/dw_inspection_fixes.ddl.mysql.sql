@@ -1,0 +1,25 @@
+CREATE TABLE IF NOT EXISTS `dw_inspection_fixes` (
+  `run_id`          VARCHAR(100) NOT NULL,
+  `plan_id`         VARCHAR(100) NOT NULL,
+  `execution_id`    VARCHAR(100) NOT NULL,
+  `item_id`         VARCHAR(400) NOT NULL,
+  `finding_uid`     VARCHAR(400) NULL,
+  `plan_path`       VARCHAR(500) NULL,
+  `execution_path`  VARCHAR(500) NULL,
+  `strategy`        VARCHAR(60)  NULL,
+  `risk`            VARCHAR(20)  NULL,
+  `fix_sql`         TEXT       NULL,
+  `rollback_sql`    TEXT       NULL,
+  `sql_digest`      VARCHAR(64)  NULL,
+  `status`          VARCHAR(30)  NULL,
+  `applied_at`      VARCHAR(30)  NULL,
+  `affected_rows`   BIGINT       NULL,
+  -- 审计与按表/列聚合（首装即终态）
+  `table`           VARCHAR(200) NULL,
+  `column`          VARCHAR(200) NULL,
+  `confirmed_by`    VARCHAR(100) NULL,
+  `requested_by`    VARCHAR(100) NULL,
+  `note`            TEXT       NULL,
+  `executed_at`     VARCHAR(30)  NULL,
+  PRIMARY KEY (`run_id`, `plan_id`, `execution_id`, `item_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
