@@ -27,8 +27,7 @@
 
 > **Note**: The current development workflow and architecture may change substantially in the future; where they differ, the latest architecture takes precedence.
 
-> **Delivery form**: this open-source repository is provided as a **Web service (preview edition)**
-> for evaluation; it can also be installed from the whl package or from source.
+> **Open-source statement**: this repository is currently provided for feature trial and evaluation only.
 
 ## Core Capabilities
 

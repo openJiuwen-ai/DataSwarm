@@ -4,7 +4,6 @@
 > 三步可用（`pip install` → `dataswarm-init` → `dataswarm-start`）。适用于
 > 服务器部署、CLI 场景或希望用自有 Python 环境的用户。
 >
-> **交付形态**：本开源仓库以 **Web 服务（尝鲜版）** 形态提供，用于功能试用；
 > 本文介绍 **whl 包**（pip 安装形态）。基座 JiuwenSwarm 通用安装方式见
 > [安装指南](安装指南.md)。
 >

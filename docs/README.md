@@ -5,7 +5,7 @@
 - 按主题组织（建议命名如 `architecture.md`、`design-<topic>.md`），一个主题一份文件
 - 基座 JiuwenSwarm 的使用文档随基座携带（`zh/`、`en/` 子目录）
 - DataSwarm 安装指南：[zh/DataSwarmWHL安装指南.md](zh/DataSwarmWHL安装指南.md)
-- 交付形态：本仓库以 **Web 服务（尝鲜版）** 形态提供，用于功能试用
+- **开源说明**：本仓库当前仅用于功能尝鲜体验。
 - 通用文档（快速开始 / 贡献 / 测试）见仓库根 [README.zh.md](../README.zh.md)
   （英文版 [README.md](../README.md)）、[CONTRIBUTING.md](../CONTRIBUTING.md)、
   [TESTING.md](../TESTING.md)

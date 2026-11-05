@@ -3443,10 +3443,10 @@ index e184d4d63..b82bd7169 100644
 +regenerate the dependency inventory using
 +`uv run --with pip-licenses pip-licenses` from the project environment.*
 diff --git a/README.md b/README.md
-index c4311ffbf..06904935f 100644
+index c4311ffbf..8428f69df 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,228 +1,240 @@
+@@ -1,228 +1,239 @@
  <p align="center">
 -  <img src="docs/assets/images/logo.svg" alt="JiuwenSwarm Logo" width="160" />
 +  <h1 align="center">DataSwarm</h1>
@@ -3500,8 +3500,7 @@ index c4311ffbf..06904935f 100644
 +> **Note**: The current development workflow and architecture may change substantially in the future; where they differ, the latest architecture takes precedence.
  
 -### Why JiuwenSwarm
-+> **Delivery form**: this open-source repository is provided as a **Web service (preview edition)**
-+> for evaluation; it can also be installed from the whl package or from source.
++> **Open-source statement**: this repository is currently provided for feature trial and evaluation only.
  
 -| Capability                      | Value                                                                                                                                                     |
 -| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -3843,10 +3842,10 @@ index c4311ffbf..06904935f 100644
  This product serves solely as a workflow orchestration tool and does not embed any AI model capabilities. When users integrate AI models for specific business scenarios, they shall bear full responsibility for compliance obligations under the EU AI Act and other relevant regulatory frameworks.
 diff --git a/README.zh.md b/README.zh.md
 new file mode 100644
-index 000000000..69d3c8c2f
+index 000000000..544e3e804
 --- /dev/null
 +++ b/README.zh.md
-@@ -0,0 +1,227 @@
+@@ -0,0 +1,226 @@
 +<p align="center">
 +  <h1 align="center">DataSwarm</h1>
 +</p>
@@ -3876,8 +3875,7 @@ index 000000000..69d3c8c2f
 +
 +> **注意**：当前的开发形态与整体架构在未来可能产生较大变化，本文档描述的流程与结构以最新架构为准。
 +
-+> **交付形态说明**：本开源仓库以 **Web 服务（尝鲜版）** 形态提供，用于功能试用；
-+> 亦可按 whl / 源码方式安装运行。
++> **开源说明**：本仓库当前仅作为功能尝鲜体验。
 +
 +## 核心能力
 +
@@ -6586,7 +6584,7 @@ index fa26c176f..d3010324f 100644
  # 外接 ACP Agent（stdio），供工具 acp_chat 使用。按需取消注释并填写；command/args 可指向任意兼容 ACP 的包（与 VS Code formulahendry.acp-client 预置列表一致）。
  acp_agents:
 diff --git a/docs/README.md b/docs/README.md
-index 560db858d..1618977fd 100644
+index 560db858d..b3c5197d5 100644
 --- a/docs/README.md
 +++ b/docs/README.md
 @@ -1,228 +1,11 @@
@@ -6823,23 +6821,22 @@ index 560db858d..1618977fd 100644
 +- 按主题组织（建议命名如 `architecture.md`、`design-<topic>.md`），一个主题一份文件
 +- 基座 JiuwenSwarm 的使用文档随基座携带（`zh/`、`en/` 子目录）
 +- DataSwarm 安装指南：[zh/DataSwarmWHL安装指南.md](zh/DataSwarmWHL安装指南.md)
-+- 交付形态：本仓库以 **Web 服务（尝鲜版）** 形态提供，用于功能试用
++- **开源说明**：本仓库当前仅用于功能尝鲜体验。
 +- 通用文档（快速开始 / 贡献 / 测试）见仓库根 [README.zh.md](../README.zh.md)
 +  （英文版 [README.md](../README.md)）、[CONTRIBUTING.md](../CONTRIBUTING.md)、
 +  [TESTING.md](../TESTING.md)
 diff --git a/docs/en/DataSwarmInstallGuideWHL.md b/docs/en/DataSwarmInstallGuideWHL.md
 new file mode 100644
-index 000000000..09c52bdd3
+index 000000000..b8d220660
 --- /dev/null
 +++ b/docs/en/DataSwarmInstallGuideWHL.md
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,120 @@
 +# DataSwarm WHL Installation Guide
 +
 +Applies to the `dataswarm` whl package (`pip install` → `dataswarm-init` →
-+`dataswarm-start`, three steps to a running instance). This open-source
-+repository is provided as a **Web service (preview edition)** for evaluation;
-+this guide covers the whl package (`pip install` form). For the base JiuwenSwarm
-+installation, see [InstallGuide](InstallGuide.md).
++`dataswarm-start`, three steps to a running instance). This guide covers the
++whl package (`pip install` form). For the base JiuwenSwarm installation, see
++[InstallGuide](InstallGuide.md).
 +
 +## 1. Prerequisites
 +
@@ -6956,17 +6953,16 @@ index 000000000..09c52bdd3
 +4. Opening http://localhost:16173 in a browser shows the Web UI
 diff --git "a/docs/zh/DataSwarmWHL\345\256\211\350\243\205\346\214\207\345\215\227.md" "b/docs/zh/DataSwarmWHL\345\256\211\350\243\205\346\214\207\345\215\227.md"
 new file mode 100644
-index 000000000..10079a788
+index 000000000..9adf1c2cd
 --- /dev/null
 +++ "b/docs/zh/DataSwarmWHL\345\256\211\350\243\205\346\214\207\345\215\227.md"
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,114 @@
 +# DataSwarm WHL 安装指南
 +
 +> **目标**：通过 `pip install` 安装 `dataswarm` whl 包并完成初始化、配置与启动，
 +> 三步可用（`pip install` → `dataswarm-init` → `dataswarm-start`）。适用于
 +> 服务器部署、CLI 场景或希望用自有 Python 环境的用户。
 +>
-+> **交付形态**：本开源仓库以 **Web 服务（尝鲜版）** 形态提供，用于功能试用；
 +> 本文介绍 **whl 包**（pip 安装形态）。基座 JiuwenSwarm 通用安装方式见
 +> [安装指南](安装指南.md)。
 +>

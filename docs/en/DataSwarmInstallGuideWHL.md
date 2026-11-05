@@ -1,10 +1,9 @@
 # DataSwarm WHL Installation Guide
 
 Applies to the `dataswarm` whl package (`pip install` → `dataswarm-init` →
-`dataswarm-start`, three steps to a running instance). This open-source
-repository is provided as a **Web service (preview edition)** for evaluation;
-this guide covers the whl package (`pip install` form). For the base JiuwenSwarm
-installation, see [InstallGuide](InstallGuide.md).
+`dataswarm-start`, three steps to a running instance). This guide covers the
+whl package (`pip install` form). For the base JiuwenSwarm installation, see
+[InstallGuide](InstallGuide.md).
 
 ## 1. Prerequisites
 
