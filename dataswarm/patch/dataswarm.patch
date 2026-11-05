@@ -30031,10 +30031,10 @@ index 000000000..577c00312
 +    return None
 diff --git a/jiuwenswarm/channels/web/dataagent/analysis/explore.py b/jiuwenswarm/channels/web/dataagent/analysis/explore.py
 new file mode 100644
-index 000000000..e49f4a9d9
+index 000000000..8c439d6d4
 --- /dev/null
 +++ b/jiuwenswarm/channels/web/dataagent/analysis/explore.py
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,234 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""analysis/explore.py —— L3 探索工具：probe_values / check_join。
 +
@@ -30051,6 +30051,7 @@ index 000000000..e49f4a9d9
 +from typing import Any
 +
 +from jiuwenswarm.common import workspace_context
++from jiuwenswarm.common.dialect_registry import quote_ident
 +
 +from ..metrics import semantic_link
 +from ..sql import service as sql_service
@@ -30093,11 +30094,19 @@ index 000000000..e49f4a9d9
 +    if column.is_sensitive:
 +        raise PermissionError(f"列 {table_name}.{column_name} 为敏感列，禁止取值探查")
 +
-+    predicate = f"`{column_name}` LIKE '%{_escape_like(like)}%'" if like else f"`{column_name}` IS NOT NULL"
++    # 标识符引号按快照列的 source_type 选方言：源侧护栏用同方言解析
++    # （sql_guard），文件/采样源已由 registry 归一到 duckdb。硬编码反引号
++    # 会让 duckdb/postgres 方言的源在护栏解析阶段直接报 SQL parse error。
++    dialect = str(getattr(column, "source_type", "") or "duckdb")
++    column_ref = quote_ident(dialect, column_name)
++    value_alias = quote_ident(dialect, "value")
++    cnt_alias = quote_ident(dialect, "cnt")
++    predicate = (f"{column_ref} LIKE '%{_escape_like(like)}%'" if like
++                 else f"{column_ref} IS NOT NULL")
 +    sql = (
-+        f"SELECT `{column_name}` AS `value`, COUNT(*) AS `cnt` "
-+        f"FROM `{table_name}` WHERE {predicate} "
-+        f"GROUP BY `{column_name}` ORDER BY `cnt` DESC LIMIT {limit}"
++        f"SELECT {column_ref} AS {value_alias}, COUNT(*) AS {cnt_alias} "
++        f"FROM {quote_ident(dialect, table_name)} WHERE {predicate} "
++        f"GROUP BY {column_ref} ORDER BY {cnt_alias} DESC LIMIT {limit}"
 +    )
 +    result = sql_service.run_sql(None, sql, limit=limit, workspace_id=workspace_id,
 +                                 source_id=source_id)
@@ -30153,7 +30162,8 @@ index 000000000..e49f4a9d9
 +    inclusion_ratio: float | None = None
 +    if sample and type_match:
 +        inclusion_ratio = _sample_inclusion(
-+            workspace_id, source_id, left_table, left_column, right_table, right_column)
++            workspace_id, source_id, left_table, left_column, right_table, right_column,
++            dialect=str(getattr(left_meta, "source_type", "") or "duckdb"))
 +
 +    status = "compatible" if type_match else "type_mismatch"
 +    return {
@@ -30213,14 +30223,21 @@ index 000000000..e49f4a9d9
 +def _sample_inclusion(
 +    workspace_id: str, source_id: str,
 +    left_table: str, left_column: str, right_table: str, right_column: str,
++    dialect: str = "duckdb",
 +) -> float | None:
-+    """抽样包含率：左列 DISTINCT 样本中出现在右列的比例（budget 内 best-effort）。"""
++    """抽样包含率：左列 DISTINCT 样本中出现在右列的比例（budget 内 best-effort）。
++
++    ``dialect`` 为源侧方言（快照 ColumnMeta.source_type），标识符引号随之
++    选择，与 SQL 护栏的解析方言保持一致。
++    """
++    left, right = quote_ident(dialect, left_column), quote_ident(dialect, right_column)
++    total_alias, hit_alias = quote_ident(dialect, "total"), quote_ident(dialect, "hit")
 +    sql = (
-+        f"SELECT COUNT(*) AS `total`, "
-+        f"SUM(CASE WHEN (`{left_column}` IN (SELECT `{right_column}` FROM `{right_table}` "
-+        f"WHERE `{right_column}` IS NOT NULL LIMIT {JOIN_SAMPLE_LIMIT})) THEN 1 ELSE 0 END) AS `hit` "
-+        f"FROM (SELECT DISTINCT `{left_column}` FROM `{left_table}` "
-+        f"WHERE `{left_column}` IS NOT NULL LIMIT {JOIN_SAMPLE_LIMIT}) AS `probe_left`"
++        f"SELECT COUNT(*) AS {total_alias}, "
++        f"SUM(CASE WHEN ({left} IN (SELECT {right} FROM {quote_ident(dialect, right_table)} "
++        f"WHERE {right} IS NOT NULL LIMIT {JOIN_SAMPLE_LIMIT})) THEN 1 ELSE 0 END) AS {hit_alias} "
++        f"FROM (SELECT DISTINCT {left} FROM {quote_ident(dialect, left_table)} "
++        f"WHERE {left} IS NOT NULL LIMIT {JOIN_SAMPLE_LIMIT}) AS {quote_ident(dialect, 'probe_left')}"
 +    )
 +    result = sql_service.run_sql(None, sql, limit=10, workspace_id=workspace_id,
 +                                 source_id=source_id)
@@ -34504,10 +34521,10 @@ index 000000000..54094c70e
 +        return cls()
 diff --git a/jiuwenswarm/channels/web/dataagent/business_data/codec_impl.py b/jiuwenswarm/channels/web/dataagent/business_data/codec_impl.py
 new file mode 100644
-index 000000000..104b0d815
+index 000000000..063fcbb69
 --- /dev/null
 +++ b/jiuwenswarm/channels/web/dataagent/business_data/codec_impl.py
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,204 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""Business-data browsing through the registered datasource codec contracts.
 +
@@ -34548,9 +34565,65 @@ index 000000000..104b0d815
 +        return list(dbc.tables(self.db_ref).get("tables", []))
 +
 +    def _checked_table(self, table_name: str) -> str:
-+        if table_name not in self._table_names():
-+            raise LookupError("table is not registered for this datasource")
-+        return table_name
++        """校验并返回目录中的规范表名。
++
++        带 schema 的目录（DuckDB 原生库 / SQL Server）暴露的是全限定名，而
++        调用方常只知裸表名（任务描述、人工输入）。裸名只按目录条目解析（单段
++        匹配末段，两段匹配全限定），不拼 SQL——未注册的名字仍然拒绝。
++        """
++        names = self._table_names()
++        if table_name in names:
++            return table_name
++        if self._qualified_catalog():
++            matches = self._catalog_matches(names, table_name)
++            if len(matches) > 1:
++                # 默认 schema 优先（DuckDB 的 main）：与裸名 SQL 的解析结果一致。
++                preferred = self._default_schema_matches(matches)
++                if len(preferred) == 1:
++                    return preferred[0]
++                candidates = ", ".join(sorted(matches))
++                raise LookupError(
++                    f"table {table_name!r} is ambiguous across schemas; "
++                    f"use a qualified name: {candidates}"
++                )
++            if matches:
++                return matches[0]
++        raise LookupError(f"table {table_name!r} not found in this datasource")
++
++    def _catalog_matches(self, names: list[str], table_name: str) -> list[str]:
++        """按目录条目匹配请求的标识符：单段比末段，两段比全限定。"""
++        try:
++            wanted = table_identifier_parts(table_name, self._codec.dialect)
++        except ValueError:
++            return []
++        matches = []
++        for name in names:
++            try:
++                parts = table_identifier_parts(name, self._codec.dialect)
++            except ValueError:
++                continue
++            if len(wanted) == 2:
++                matched = parts == wanted
++            else:
++                matched = parts[-1:] == wanted
++            if matched:
++                matches.append(name)
++        return matches
++
++    def _default_schema_matches(self, matches: list[str]) -> list[str]:
++        """挑出落在 codec 默认 schema 的条目（无该概念时返回空）。"""
++        default = self._codec.default_schema
++        if not default:
++            return []
++        preferred = []
++        for name in matches:
++            try:
++                parts = table_identifier_parts(name, self._codec.dialect)
++            except ValueError:
++                continue
++            if len(parts) == 2 and parts[0] == default:
++                preferred.append(name)
++        return preferred
 +
 +    def _quoted_table(self, table_name: str) -> str:
 +        # These codecs return explicitly delimited schema/table identifiers.
@@ -34591,7 +34664,7 @@ index 000000000..104b0d815
 +        return rows
 +
 +    def get_table_detail(self, db_name: str, table_name: str) -> dict:
-+        self._checked_table(table_name)
++        table_name = self._checked_table(table_name)
 +        metadata = dbc.schema(self.db_ref, table_name)
 +        columns = [
 +            {**column,
@@ -34633,8 +34706,7 @@ index 000000000..104b0d815
 +        limit, offset = self._page_bounds(limit, offset)
 +        if not self._preview_supported():
 +            raise ValueError(f"{self._source_type} source is metadata-only; preview is unsupported")
-+        self._checked_table(table_name)
-+        name = self._quoted_table(table_name)
++        name = self._quoted_table(self._checked_table(table_name))
 +        # One extra row distinguishes a full page from a known end. At the
 +        # window boundary completeness remains unknown; do not report total=0.
 +        window_end = offset + limit
@@ -36787,10 +36859,10 @@ index 000000000..8352459c3
 +        )
 diff --git a/jiuwenswarm/channels/web/dataagent/connectors/duckdb_native.py b/jiuwenswarm/channels/web/dataagent/connectors/duckdb_native.py
 new file mode 100644
-index 000000000..bec059be8
+index 000000000..8a0e6938d
 --- /dev/null
 +++ b/jiuwenswarm/channels/web/dataagent/connectors/duckdb_native.py
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,138 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""DuckDB 原生库的只读连接和元数据。
 +
@@ -36853,7 +36925,12 @@ index 000000000..bec059be8
 +
 +
 +def resolve_dataset(connection, dataset: str, schema_name: str | None = None) -> dict:
-+    """显式引号标识符优先解析，避免被同名的 main 表遮蔽。"""
++    """显式引号标识符优先解析，避免被同名的 main 表遮蔽。
++
++    裸表名先按 main 解析（与 DuckDB 默认 search_path 一致）；main 里没有时
++    在全部 schema 中找唯一同名表——原生库常有 main 之外的业务 schema，
++    调用方（如任务描述）通常只知道裸表名。
++    """
 +    available = {(item["schema"], item["name"]): item for item in datasets(connection)}
 +    if schema_name is not None:
 +        key = (schema_name, dataset)
@@ -36864,7 +36941,20 @@ index 000000000..bec059be8
 +            parts = table_identifier_parts(dataset, "duckdb")
 +        except ValueError as exc:
 +            raise ConnectorError("invalid native DuckDB dataset identifier") from exc
-+        key = ("main", parts[0]) if len(parts) == 1 else tuple(parts)
++        if len(parts) == 2:
++            key = tuple(parts)
++        else:
++            key = ("main", parts[0])
++            if key not in available:
++                matches = sorted(name for name in available if name[1] == parts[0])
++                if len(matches) > 1:
++                    candidates = ", ".join(f'"{schema}"."{name}"' for schema, name in matches)
++                    raise ConnectorError(
++                        f"dataset {parts[0]!r} is ambiguous across schemas; "
++                        f"use a qualified name: {candidates}"
++                    )
++                if matches:
++                    key = matches[0]
 +    if key not in available:
 +        raise ConnectorError("dataset is not registered for this source")
 +    return available[key]
@@ -40060,10 +40150,10 @@ index 000000000..e8dbcea72
 +"""databases —— 库表管理（库列表 / 表清单 / 表详情 / 预览）。"""
 diff --git a/jiuwenswarm/channels/web/dataagent/databases/controller.py b/jiuwenswarm/channels/web/dataagent/databases/controller.py
 new file mode 100644
-index 000000000..ec5274900
+index 000000000..7c49fe5bb
 --- /dev/null
 +++ b/jiuwenswarm/channels/web/dataagent/databases/controller.py
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,142 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""databases/controller.py — 库表管理 HTTP 路由分发。
 +
@@ -40164,6 +40254,11 @@ index 000000000..ec5274900
 +            return
 +    except (IndexError, ValueError) as exc:
 +        handler._write_json(400, {"error": "bad_request", "detail": str(exc)})
++        return
++    except LookupError as exc:
++        # 表不在数据源目录里（含跨 schema 裸名歧义）：是「找不到」，不是服务端故障。
++        # 500 internal_error 会让技能侧只能报 UNKNOWN（hint 指向查数据库日志）。
++        handler._write_json(404, {"error": "not_found", "detail": str(exc)})
 +        return
 +    except Exception as exc:
 +        handler._write_json(500, {"error": "internal_error", "detail": str(exc)})
@@ -202458,10 +202553,10 @@ index d5005881c..38c364397 100644
      - models.*.model_config_obj.temperature
 diff --git a/jiuwenswarm/common/db_connector.py b/jiuwenswarm/common/db_connector.py
 new file mode 100644
-index 000000000..6e7b6ab74
+index 000000000..4a3ee2309
 --- /dev/null
 +++ b/jiuwenswarm/common/db_connector.py
-@@ -0,0 +1,2677 @@
+@@ -0,0 +1,2678 @@
 +#!/usr/bin/env python3
 +# -*- coding: utf-8 -*-
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
@@ -203759,6 +203854,7 @@ index 000000000..6e7b6ab74
 +    scheme = "duckdb"
 +    dialect = "duckdb"
 +    uses_pool = False
++    default_schema = "main"
 +
 +    def decode(self, rest: str, db_ref: str) -> dict:
 +        # 同 SqliteRefCodec：type 以 self.scheme 为准，便于子类复用本族逻辑。
@@ -206279,10 +206375,10 @@ index 7977a3505..44b6700c3 100644
          runtime_model_config.update(override)
 diff --git a/jiuwenswarm/common/ref_codec.py b/jiuwenswarm/common/ref_codec.py
 new file mode 100644
-index 000000000..f3884f3ef
+index 000000000..2cbce5085
 --- /dev/null
 +++ b/jiuwenswarm/common/ref_codec.py
-@@ -0,0 +1,250 @@
+@@ -0,0 +1,253 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""db-ref 编解码、连接和元数据端口的注册表。
 +
@@ -206365,6 +206461,9 @@ index 000000000..f3884f3ef
 +    dialect: str = ""
 +    #: True = 连接走 db_connector 的 Engine 池；False = codec 自管 I/O。
 +    uses_pool: bool = True
++    #: 该方言裸标识符默认落到的 schema（DuckDB 的 main）；空串表示无此概念。
++    #: 跨 schema 同名时按它优先，与裸名 SQL 的解析结果保持一致。
++    default_schema: str = ""
 +
 +    # ------------------------------------------------------------------ #
 +    # 解码（必须实现）
@@ -224056,10 +224155,10 @@ index 000000000..330965fb5
 +        )
 diff --git a/jiuwenswarm/resources/agent/workspace/skills/_dw_common/scripts/dw_client.py b/jiuwenswarm/resources/agent/workspace/skills/_dw_common/scripts/dw_client.py
 new file mode 100644
-index 000000000..d4a312e7c
+index 000000000..b5193c9d7
 --- /dev/null
 +++ b/jiuwenswarm/resources/agent/workspace/skills/_dw_common/scripts/dw_client.py
-@@ -0,0 +1,401 @@
+@@ -0,0 +1,410 @@
 +#!/usr/bin/env python3
 +# -*- coding: utf-8 -*-
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
@@ -224159,11 +224258,14 @@ index 000000000..d4a312e7c
 +            time.sleep(1.0 * (attempt + 1))
 +            continue
 +        break
-+    if payload.get("status") == "error" or payload.get("error_code") in (
++    # 只把工作空间类错误包成 WorkspaceContextError；其余错误必须走 _err_msg
++    # 带出 detail——否则技能侧只能看到 "not_found" / "internal_error" 这类光秃秃
++    # 的错误名，hint 指向「查数据库日志」，真实原因全丢。
++    code = payload.get("error_code") or payload.get("error")
++    if code in (
 +            "WORKSPACE_CONTEXT_REQUIRED", "WORKSPACE_CONTEXT_CONFLICT",
 +            "DB_REF_NOT_ALLOWED", "DUPLICATE_METADATA_DB_REF"):
-+        code = payload.get("error_code") or "WORKSPACE_CONTEXT_ERROR"
-+        raise WorkspaceContextError(payload.get("error") or "dwcli 调用失败", code)
++        raise WorkspaceContextError(_err_msg(payload), code)
 +    if payload.get("status") == "error":
 +        raise RuntimeError(_err_msg(payload))
 +    if payload.get("http_code", 0) >= 400:
@@ -224378,12 +224480,18 @@ index 000000000..d4a312e7c
 +
 +
 +def schema(db_ref: str, table: str, role: str = "business") -> dict:
-+    """表结构。经 dwcli databases table。"""
++    """表结构。经 dwcli databases table。
++
++    ``resolved_table`` 是服务端目录里的规范表名：带 schema 的目录（DuckDB
++    原生库 / SQL Server）接受裸表名后返回全限定名，调用方据此拼后续 SQL。
++    """
 +    spec = parse_db_ref(db_ref)
 +    db_name = spec.get("database") or ""
 +    payload = _dwcli("databases", "table", "--db", db_name, "--table", table,
 +                     "--db-ref", db_ref)
-+    return {"table": table, "columns": payload.get("columns", payload.get("fields", [])),
++    return {"table": table,
++            "resolved_table": payload.get("name") or table,
++            "columns": payload.get("columns", payload.get("fields", [])),
 +            "db": {"type": spec.get("type"), "ref": db_ref}}
 +
 +
@@ -224463,10 +224571,10 @@ index 000000000..d4a312e7c
 +                  "--q", query_text, "--limit", str(limit))
 diff --git a/jiuwenswarm/resources/agent/workspace/skills/_dw_common/scripts/dw_error_classify.py b/jiuwenswarm/resources/agent/workspace/skills/_dw_common/scripts/dw_error_classify.py
 new file mode 100644
-index 000000000..e116755ff
+index 000000000..2c8f7ce57
 --- /dev/null
 +++ b/jiuwenswarm/resources/agent/workspace/skills/_dw_common/scripts/dw_error_classify.py
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,82 @@
 +#!/usr/bin/env python3
 +# -*- coding: utf-8 -*-
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
@@ -224491,6 +224599,8 @@ index 000000000..e116755ff
 +    r"Catalog Error: Table with name .+ not found"
 +)
 +_COLUMN_NOT_FOUND_RE = re.compile(r"Catalog Error: Column with name .+ does not exist")
++# 裸表名在多个 schema 下同名：不是拼写错误，也不是服务故障——改写全限定名即可。
++_AMBIGUOUS_TABLE_RE = re.compile(r"is ambiguous across schemas", re.IGNORECASE)
 +_SYNTAX_RE = re.compile(
 +    r"errCode\s*=\s*2|mismatched input|Parse error|Syntax error|syntax error"
 +    r"|\(1064,|\(1105,|ParserException|Binder Error|Catalog Error",
@@ -224515,6 +224625,8 @@ index 000000000..e116755ff
 +        return "PERMISSION_DENIED", msg, False
 +    if _has_code(3024, 20101) or "Query timeout" in msg:
 +        return "TIMEOUT", msg, True
++    if _AMBIGUOUS_TABLE_RE.search(msg):
++        return "AMBIGUOUS_TABLE", msg, True
 +    if _TABLE_NOT_FOUND_RE.search(msg):
 +        return "TABLE_NOT_FOUND", msg, False
 +    if _COLUMN_NOT_FOUND_RE.search(msg):
@@ -224530,6 +224642,7 @@ index 000000000..e116755ff
 +SUGGESTIONS: dict[str, str] = {
 +    "PERMISSION_DENIED": "联系 DBA 申请该表的 select 权限",
 +    "TABLE_NOT_FOUND": "确认表名拼写或检查 information_schema.tables",
++    "AMBIGUOUS_TABLE": '表名在多个 schema 下同名，改用全限定名（如 "schema"."table"）',
 +    "COLUMN_NOT_FOUND": "确认列名拼写，用 get_schema.py 重新拉取表结构",
 +    "SYNTAX_ERROR": "检查 SQL 语法，参考 SQL 方言注意事项",
 +    "TIMEOUT": "添加 LIMIT 或收紧 WHERE 条件后重试",
@@ -240897,10 +241010,10 @@ index 000000000..b3c208c5a
 +> 根据知识库中的《报销制度.pdf》，报销流程第三步是提交发票至财务系统。
 diff --git a/jiuwenswarm/resources/agent/workspace/skills/nl2sql/SKILL.md b/jiuwenswarm/resources/agent/workspace/skills/nl2sql/SKILL.md
 new file mode 100644
-index 000000000..54eb0a78c
+index 000000000..532b881d6
 --- /dev/null
 +++ b/jiuwenswarm/resources/agent/workspace/skills/nl2sql/SKILL.md
-@@ -0,0 +1,245 @@
+@@ -0,0 +1,246 @@
 +---
 +name: nl2sql
 +description: |
@@ -240955,7 +241068,8 @@ index 000000000..54eb0a78c
 +- 成功：stdout 一个 JSON 对象，退出码 0
 +- 失败：stderr 一个 JSON 对象，退出码 1，形如
 +  `{"ok": false, "error": {"kind": "...", "why": "...", "hint": "...", "retry": false, "stage": "..."}}`
-+  - `kind`：PERMISSION_DENIED / TABLE_NOT_FOUND / COLUMN_NOT_FOUND / SYNTAX_ERROR / TIMEOUT / UNKNOWN / MISSING_CONFIG 等
++  - `kind`：PERMISSION_DENIED / TABLE_NOT_FOUND / AMBIGUOUS_TABLE / COLUMN_NOT_FOUND / SYNTAX_ERROR / TIMEOUT / UNKNOWN / MISSING_CONFIG 等
++    （`AMBIGUOUS_TABLE`：裸表名在多个 schema 下同名，按 `why` 里列出的候选改用全限定名重试）
 +  - `why` 原始报错，`hint` 建议的修法，`retry` 为 true 表示改 SQL 后值得再试
 +  - `stage` 只有 SQL 类脚本才带：`SQL_EXPLAIN`（预检阶段）/ `SQL_EXECUTION`（正式执行阶段）
 +
@@ -241471,10 +241585,10 @@ index 000000000..5b9a57d48
 +    main()
 diff --git a/jiuwenswarm/resources/agent/workspace/skills/nl2sql/scripts/get_schema.py b/jiuwenswarm/resources/agent/workspace/skills/nl2sql/scripts/get_schema.py
 new file mode 100644
-index 000000000..1ecdc6f97
+index 000000000..26040561a
 --- /dev/null
 +++ b/jiuwenswarm/resources/agent/workspace/skills/nl2sql/scripts/get_schema.py
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,95 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +import argparse
 +import os
@@ -241497,7 +241611,9 @@ index 000000000..1ecdc6f97
 +        emit_error("TABLE_NOT_FOUND", f"{table} not found or has no columns")
 +    return {
 +        "database": database_name(),
-+        "table": table,
++        # 原生库按 schema 暴露（"schema"."table"）：裸表名解析后回填规范名，
++        # 下游写 SQL 直接用它，避免默认 search_path 只有 main 时查不到。
++        "table": result.get("resolved_table") or table,
 +        "columns": [
 +            {"name": c["name"], "type": c["type"], "comment": c.get("comment") or "",
 +             "nullable": c.get("nullable", c.get("null", True)), "ordinal": i + 1}
@@ -241878,10 +241994,10 @@ index 000000000..1d76445d3
 +    main()
 diff --git a/jiuwenswarm/resources/agent/workspace/skills/nl2sql/scripts/sample_dim_values.py b/jiuwenswarm/resources/agent/workspace/skills/nl2sql/scripts/sample_dim_values.py
 new file mode 100644
-index 000000000..8c3c840ac
+index 000000000..7be896559
 --- /dev/null
 +++ b/jiuwenswarm/resources/agent/workspace/skills/nl2sql/scripts/sample_dim_values.py
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,161 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +import argparse
 +import os
@@ -241915,6 +242031,9 @@ index 000000000..8c3c840ac
 +    except Exception as exc:
 +        et, msg, _ = classify_error(exc)
 +        emit_error(et, msg)
++    # 裸表名解析后的规范名（原生库 "schema"."table"）：采样 SQL 必须用它，
++    # 否则 main 之外的 schema 在默认 search_path 下查不到。
++    table = result.get("resolved_table") or table
 +    dim_cols = [
 +        (c["name"], c["type"], c.get("comment") or "")
 +        for c in result.get("columns", [])
@@ -273972,10 +274091,10 @@ index d14c6c678..b178b7ccc 100644
  
 diff --git a/tests/unit_tests/cli/test_dw_client.py b/tests/unit_tests/cli/test_dw_client.py
 new file mode 100644
-index 000000000..0673dcc96
+index 000000000..a1eb42cbf
 --- /dev/null
 +++ b/tests/unit_tests/cli/test_dw_client.py
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,240 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""dw_client 共享委托层单测（方案批次 2：skill 侧 db_connector → dwcli 委托）。
 +
@@ -274092,6 +274211,36 @@ index 000000000..0673dcc96
 +    fake_run.payloads = [{"columns": [{"name": "id", "type": "int"}], "table": "t1"}]
 +    out = dc.schema("doris://h/d", "t1")
 +    assert out["columns"][0]["name"] == "id"
++
++
++def test_schema_surfaces_resolved_table(fake_run):
++    """服务端目录回填的规范表名（裸表名 → "schema"."table"）要透传给调用方。"""
++    fake_run.payloads = [{"name": '"indextrade_database"."index_info"',
++                          "columns": [{"name": "ts_code", "type": "VARCHAR"}]}]
++    out = dc.schema("duckdb://D:/stockindex.duckdb?source_type=duckdb", "index_info")
++    assert out["resolved_table"] == '"indextrade_database"."index_info"'
++    assert out["table"] == "index_info"
++
++
++def test_business_error_preserves_detail(fake_run):
++    """业务错误必须带出 detail——否则技能侧只看到 "not_found" 这类光秃错误名。"""
++    fake_run.payloads = [{"status": "error", "http_code": 404, "error": "not_found",
++                          "detail": "table 'missing_tbl' not found in this datasource"}]
++    with pytest.raises(RuntimeError) as exc:
++        dc.schema("duckdb://D:/stockindex.duckdb?source_type=duckdb", "missing_tbl")
++    assert not isinstance(exc.value, dc.WorkspaceContextError)
++    assert "not_found" in str(exc.value)
++    assert "missing_tbl" in str(exc.value)
++
++
++@pytest.mark.parametrize("code", ["WORKSPACE_CONTEXT_REQUIRED", "DB_REF_NOT_ALLOWED"])
++def test_workspace_error_keeps_code(fake_run, code):
++    fake_run.payloads = [{"status": "error", "http_code": 400, "error": code,
++                          "detail": "workspace_id is required"}]
++    with pytest.raises(dc.WorkspaceContextError) as exc:
++        dc.tables("duckdb://D:/a.duckdb?source_type=duckdb")
++    assert exc.value.code == code
++    assert "workspace_id is required" in str(exc.value)
 +
 +
 +def test_list_indexes_duckdb_returns_empty_without_query(fake_run):
@@ -277068,10 +277217,10 @@ index 000000000..3039822d8
 +        assert "越界表" in result.detail
 diff --git a/tests/unit_tests/dataagent/test_analysis_explore.py b/tests/unit_tests/dataagent/test_analysis_explore.py
 new file mode 100644
-index 000000000..905554b3a
+index 000000000..de55263df
 --- /dev/null
 +++ b/tests/unit_tests/dataagent/test_analysis_explore.py
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,105 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""analysis/explore.py 行协议适配测试。
 +
@@ -277081,7 +277230,62 @@ index 000000000..905554b3a
 +``'list' object has no attribute 'get'``（评测里表现为 probe internal_error，
 +组件自降 G2）。修复引入 ``_row_get`` 按 columns 位置取值。
 +"""
++from types import SimpleNamespace
++
 +import jiuwenswarm.channels.web.dataagent.analysis.explore as explore
++
++
++class TestIdentifierQuoting:
++    """探针 SQL 的标识符引号必须跟随源方言。
++
++    回归（2026-11-05）：probe 硬编码反引号，duckdb/postgres 方言的源在
++    护栏 ``sqlglot.parse(read=duckdb)`` 阶段即报
++    ``Invalid expression / Unexpected token. Line 1, Col: 24``——
++    ``dedsa.sales_orders.Delivery_Status`` 维值探查失败。
++    """
++
++    def _probe_sql(self, monkeypatch, source_type: str) -> str:
++        column = SimpleNamespace(
++            name="Delivery_Status", status="active", is_sensitive=False,
++            data_type="VARCHAR", source_type=source_type)
++        snapshot = SimpleNamespace(
++            source=SimpleNamespace(source_id="dedsa"),
++            tables=[SimpleNamespace(name="sales_orders", columns=[column])])
++        monkeypatch.setattr(explore.semantic_link, "current_snapshots",
++                            lambda warnings=None: ([], {"snap": snapshot}))
++        monkeypatch.setattr(explore.workspace_context, "current_workspace",
++                            lambda: SimpleNamespace(workspace_id="ws"))
++        captured: dict[str, str] = {}
++
++        def fake_run_sql(_ref, sql, limit=0, workspace_id=None, source_id=None):
++            captured["sql"] = sql
++            return {"ok": True, "rows": [], "columns": ["value", "cnt"]}
++
++        monkeypatch.setattr(explore.sql_service, "run_sql", fake_run_sql)
++        explore.probe_request({"source_id": "dedsa", "table": "sales_orders",
++                               "column": "Delivery_Status"})
++        return captured["sql"]
++
++    def test_duckdb_source_uses_double_quotes(self, monkeypatch):
++        sql = self._probe_sql(monkeypatch, "duckdb")
++        assert '"Delivery_Status"' in sql
++        assert "`" not in sql
++
++    def test_mysql_source_keeps_backticks(self, monkeypatch):
++        sql = self._probe_sql(monkeypatch, "mysql")
++        assert "`Delivery_Status`" in sql
++
++    def test_sample_inclusion_sql_follows_dialect(self, monkeypatch):
++        captured: dict[str, str] = {}
++
++        def fake_run_sql(_ref, sql, limit=0, workspace_id=None, source_id=None):
++            captured["sql"] = sql
++            return {"ok": True, "rows": [[10, 5]], "columns": ["total", "hit"]}
++
++        monkeypatch.setattr(explore.sql_service, "run_sql", fake_run_sql)
++        explore._sample_inclusion("ws", "dedsa", "t1", "c1", "t2", "c2", dialect="duckdb")
++        assert '"c1"' in captured["sql"]
++        assert "`" not in captured["sql"]
 +
 +
 +class TestRowGet:
@@ -277992,10 +278196,10 @@ index 000000000..dbfb9fd98
 +    assert "suggested_scope" not in by_title["订单状态口径"]["source"]
 diff --git a/tests/unit_tests/dataagent/test_codec_business_dao.py b/tests/unit_tests/dataagent/test_codec_business_dao.py
 new file mode 100644
-index 000000000..20019c171
+index 000000000..4ee4d05e8
 --- /dev/null
 +++ b/tests/unit_tests/dataagent/test_codec_business_dao.py
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,311 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""Business-data routing and bounded previews for non-MySQL codecs."""
 +from __future__ import annotations
@@ -278247,6 +278451,66 @@ index 000000000..20019c171
 +    last = dao.preview_table("orders", "orders", 2, 1)
 +    assert last["rows"] == [[2, 20.0], [3, 40.0]]
 +    assert last["has_more"] is False and last["total"] is None
++
++
++# --------------------------------------------------------------------------
++# 带 schema 的目录：裸表名按目录条目解析（DuckDB 原生库多 schema）
++# --------------------------------------------------------------------------
++DUCKDB_NATIVE = "duckdb://stockindex.duckdb?source_type=duckdb"
++
++
++def test_bare_table_name_resolves_against_qualified_catalog(monkeypatch):
++    names = ['"main"."index_trade"', '"indextrade_database"."index_info"']
++    monkeypatch.setattr(dbc, "tables", lambda _: {"tables": names})
++    seen = []
++
++    def schema(ref, table):
++        seen.append(table)
++        return {"columns": [{"name": "ts_code", "type": "VARCHAR"}]}
++
++    monkeypatch.setattr(dbc, "schema", schema)
++    detail = get_dao(db_ref=DUCKDB_NATIVE).get_table_detail("stockindex.duckdb", "index_info")
++    assert detail["name"] == '"indextrade_database"."index_info"'
++    assert seen == ['"indextrade_database"."index_info"']
++
++
++def test_bare_table_name_prefers_main_like_duckdb_search_path(monkeypatch):
++    """main 与业务 schema 双暴露同一张表时，裸名按 DuckDB 默认 search_path 落到 main。"""
++    names = ['"main"."index_trade"', '"indextrade_database"."index_trade"']
++    monkeypatch.setattr(dbc, "tables", lambda _: {"tables": names})
++    monkeypatch.setattr(dbc, "schema", lambda ref, table: {"columns": []})
++    detail = get_dao(db_ref=DUCKDB_NATIVE).get_table_detail("stockindex.duckdb", "index_trade")
++    assert detail["name"] == '"main"."index_trade"'
++
++
++def test_ambiguous_bare_table_name_outside_main_lists_candidates(monkeypatch):
++    names = ['"warehouse"."metrics"', '"reporting"."metrics"']
++    monkeypatch.setattr(dbc, "tables", lambda _: {"tables": names})
++    monkeypatch.setattr(dbc, "schema", lambda *a, **k: pytest.fail("ambiguous name must not resolve"))
++    dao = get_dao(db_ref=DUCKDB_NATIVE)
++    with pytest.raises(LookupError, match="ambiguous across schemas") as exc:
++        dao.get_table_detail("stockindex.duckdb", "metrics")
++    assert '"reporting"."metrics"' in str(exc.value)
++
++
++def test_preview_of_bare_name_uses_canonical_qualified_name(monkeypatch):
++    monkeypatch.setattr(dbc, "tables", lambda _: {"tables": ['"indextrade_database"."index_info"']})
++    calls = []
++
++    def query(ref, sql, **kwargs):
++        calls.append(sql)
++        return {"columns": ["ts_code"], "rows": [["000001"]], "truncated": False}
++
++    monkeypatch.setattr(dbc, "query", query)
++    preview = get_dao(db_ref=DUCKDB_NATIVE).preview_table("stockindex.duckdb", "index_info", limit=1)
++    assert calls == ['SELECT * FROM "indextrade_database"."index_info" LIMIT 2']
++    assert preview["rows"] == [["000001"]]
++
++
++def test_missing_table_name_is_reported_as_not_found(monkeypatch):
++    monkeypatch.setattr(dbc, "tables", lambda _: {"tables": ['"main"."index_trade"']})
++    with pytest.raises(LookupError, match="not found"):
++        get_dao(db_ref=DUCKDB_NATIVE).get_table_detail("stockindex.duckdb", "index_info")
 diff --git a/tests/unit_tests/dataagent/test_datasource_browsing_routes.py b/tests/unit_tests/dataagent/test_datasource_browsing_routes.py
 new file mode 100644
 index 000000000..e5dc7c2f1
@@ -279612,10 +279876,10 @@ index 000000000..b303d182b
 +    assert client.quote_table("sales.orders") == '"sales.orders"'
 diff --git a/tests/unit_tests/dataagent/test_duckdb_native_connector.py b/tests/unit_tests/dataagent/test_duckdb_native_connector.py
 new file mode 100644
-index 000000000..9ee80b947
+index 000000000..f11f03690
 --- /dev/null
 +++ b/tests/unit_tests/dataagent/test_duckdb_native_connector.py
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,228 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""原生 DuckDB 文件的真实连接、命名空间、分析和只读边界。"""
 +
@@ -279814,6 +280078,36 @@ index 000000000..9ee80b947
 +def test_unregistered_dataset_is_rejected(database, name):
 +    with pytest.raises(ConnectorError):
 +        connector(database).preview(name)
++
++
++def test_bare_name_resolves_unique_table_outside_main(database):
++    with duckdb.connect(str(database)) as connection:
++        connection.execute("CREATE SCHEMA dimensions")
++        connection.execute("CREATE TABLE dimensions.regions (code VARCHAR)")
++        connection.execute("INSERT INTO dimensions.regions VALUES ('east')")
++    source = connector(database)
++    metadata = source.schema("regions")
++    assert (metadata["schema"], metadata["dataset"]) == ("dimensions", "regions")
++    assert source.preview("regions")["rows"] == [["east"]]
++
++
++def test_bare_name_ambiguous_outside_main_is_rejected_with_candidates(database):
++    with duckdb.connect(str(database)) as connection:
++        connection.execute("CREATE SCHEMA warehouse")
++        connection.execute("CREATE TABLE warehouse.metrics (id INTEGER)")
++        connection.execute("CREATE SCHEMA reporting")
++        connection.execute("CREATE TABLE reporting.metrics (id INTEGER)")
++    source = connector(database)
++    with pytest.raises(ConnectorError) as exc:
++        source.schema("metrics")
++    assert "ambiguous across schemas" in str(exc.value)
++    assert '"reporting"."metrics"' in str(exc.value)
++
++
++def test_bare_name_still_prefers_main_when_present(database):
++    source = connector(database)
++    assert source.schema("orders")["schema"] == "main"
++    assert source.schema('"orders"')["schema"] == "main"
 diff --git a/tests/unit_tests/dataagent/test_duckdb_native_integration.py b/tests/unit_tests/dataagent/test_duckdb_native_integration.py
 new file mode 100644
 index 000000000..5172b468c
@@ -290213,10 +290507,10 @@ index 000000000..1bbf3fecf
 +    pytest.main([__file__, "-v"])
 diff --git a/tests/unit_tests/dw_warehouse_build/test_dw_error_classify.py b/tests/unit_tests/dw_warehouse_build/test_dw_error_classify.py
 new file mode 100644
-index 000000000..4d8e494db
+index 000000000..82ffc3242
 --- /dev/null
 +++ b/tests/unit_tests/dw_warehouse_build/test_dw_error_classify.py
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,123 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""dw_error_classify 错误分类单测（dialect-convergence 批次 2-G7 真相源）。
 +
@@ -290303,6 +290597,16 @@ index 000000000..4d8e494db
 +    assert (et, retry) == ("SYNTAX_ERROR", True)
 +
 +
++def test_ambiguous_table_name_is_not_reported_as_service_error(dec):
++    """裸表名跨 schema 同名：修复动作是改用全限定名，不是查日志重试。"""
++    et, _, retry = _cls(
++        dec,
++        "not_found: table 'index_trade' is ambiguous across schemas; "
++        'use a qualified name: "indextrade_database"."index_trade", "main"."index_trade"',
++    )
++    assert (et, retry) == ("AMBIGUOUS_TABLE", True)
++
++
 +# --------------------------------------------------------------------------
 +# 通用
 +# --------------------------------------------------------------------------
@@ -290327,7 +290631,7 @@ index 000000000..4d8e494db
 +
 +def test_suggestions_cover_all_types(dec):
 +    """SUGGESTIONS 覆盖 classify_error 的全部返回类型（UNKNOWN 不裸奔）。"""
-+    for et in ("PERMISSION_DENIED", "TABLE_NOT_FOUND", "COLUMN_NOT_FOUND",
++    for et in ("PERMISSION_DENIED", "TABLE_NOT_FOUND", "AMBIGUOUS_TABLE", "COLUMN_NOT_FOUND",
 +               "SYNTAX_ERROR", "TIMEOUT", "UNKNOWN"):
 +        assert dec.SUGGESTIONS[et]
 diff --git a/tests/unit_tests/dw_warehouse_build/test_dw_type_map.py b/tests/unit_tests/dw_warehouse_build/test_dw_type_map.py
@@ -291506,17 +291810,25 @@ index 000000000..610adedcf
 +    assert column.dtype == "DECIMAL(38,4)"
 diff --git a/tests/unit_tests/dw_warehouse_design/test_plan_reuse.py b/tests/unit_tests/dw_warehouse_design/test_plan_reuse.py
 new file mode 100644
-index 000000000..4bb692aeb
+index 000000000..2fb18055d
 --- /dev/null
 +++ b/tests/unit_tests/dw_warehouse_design/test_plan_reuse.py
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,95 @@
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 +"""dw-warehouse-design ODS 复用构建回归测试。"""
 +
 +import json
++import sys
 +from types import SimpleNamespace
 +
 +import plan as plan_mod
++
++# plan.py 顶层 `import render` 会把本 skill 的单文件 render.py 缓存成裸名
++# sys.modules["render"]，遮蔽 dw-report 的 render/ 包（后续 `import render.page`
++# 报 "'render' is not a package"）。plan_mod 已持有模块引用，这里清掉裸名缓存即可。
++_render = sys.modules.get("render")
++if _render is not None and getattr(_render, "__path__", None) is None:
++    del sys.modules["render"]
 +
 +
 +def test_l3_all_ods_reuse_still_builds_derived_layers(tmp_path, monkeypatch, capsys):

@@ -31,6 +31,9 @@ def _sample_dim_values_duckdb(table: str, columns: list[str]) -> dict:
     except Exception as exc:
         et, msg, _ = classify_error(exc)
         emit_error(et, msg)
+    # 裸表名解析后的规范名（原生库 "schema"."table"）：采样 SQL 必须用它，
+    # 否则 main 之外的 schema 在默认 search_path 下查不到。
+    table = result.get("resolved_table") or table
     dim_cols = [
         (c["name"], c["type"], c.get("comment") or "")
         for c in result.get("columns", [])

@@ -20,7 +20,9 @@ def _schema_duckdb(table: str) -> dict:
         emit_error("TABLE_NOT_FOUND", f"{table} not found or has no columns")
     return {
         "database": database_name(),
-        "table": table,
+        # 原生库按 schema 暴露（"schema"."table"）：裸表名解析后回填规范名，
+        # 下游写 SQL 直接用它，避免默认 search_path 只有 main 时查不到。
+        "table": result.get("resolved_table") or table,
         "columns": [
             {"name": c["name"], "type": c["type"], "comment": c.get("comment") or "",
              "nullable": c.get("nullable", c.get("null", True)), "ordinal": i + 1}
