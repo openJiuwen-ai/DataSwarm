@@ -1,16 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
-"""analysis_flow.py —— dw-analysis skill 唯一入口（薄壳，Phase 2c）。
-
-四层链路契约的实现分层在 flow/ 包：dwcli_client（服务端调用）→
-manifest（账本）→ budget（判定）→ execute_core（执行管线）→ batch（并行）
-→ commands（子命令）→ observability（打点/hints）→ cli_registry（注册表）。
-本文件只做引导：flow 包就近解析 + stdout/stderr UTF-8 统一 + 调 main。
-
-调用形态不变：`python scripts/analysis_flow.py <cmd>`；stdout 契约不变
-（golden 测试锁定）；预算/账本/退出码语义见各模块 docstring。
-"""
+"""Thin JSON client for the task service; no local orchestration or mutable ledger."""
 from __future__ import annotations
 
 import sys
@@ -29,7 +20,7 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError, OSError):
         pass
 
-from flow.cli_registry import main  # noqa: E402
+from flow.runtime_cli import main  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(main())

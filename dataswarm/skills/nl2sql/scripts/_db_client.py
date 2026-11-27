@@ -1,14 +1,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
-"""nl2sql 连接层 —— 委托 dw_client（经 dwcli 走 web API，连接层已上收服务端）。
-
-复用仓库统一连接入口（dw-db-connector skill），nl2sql 不再读 ~/.nl2sql/env
-和 DB_* 环境变量；执行库按 workspace 解析链取当前工作空间绑定的业务库
-（多工作空间缺上下文 / 空间未绑源时大声失败，见 db_ref 的 MISSING_CONFIG）。
-连接池、只读护栏、跨库占位符适配由 db_connector 处理。
-"""
+"""NL2SQL transport over the shared authorized business-read API."""
 
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -90,47 +83,52 @@ def schema(table: str) -> dict:
     return db_connector.schema(db_ref(), table)
 
 
+def schema_columns() -> dict:
+    """Batch catalog columns through the metadata API."""
+    return db_connector.schema_columns(db_ref())
+
+
+def execution_context() -> dict:
+    """Get the server's source capability and dialect projection."""
+    return db_connector.business_read("context", db_ref())
+
+
 def quote_ident(name: str) -> str:
-    """按库类型给标识符加引号（sqlite 双引号 / doris 反引号）。"""
-    ref = db_ref()
-    if db_connector.parse_db_ref(ref).get("source_type") == "duckdb":
-        return '"' + name.replace('"', '""') + '"'
-    return db_connector.quote_ident(ref, name)
+    context = execution_context()
+    opening, closing = context["identifier_quote"], context["identifier_quote_close"]
+    if not opening or not closing:
+        raise ValueError("source has no SQL generation dialect")
+    return opening + name.replace(closing, closing * 2) + closing
 
 
 def quote_table(name: str) -> str:
-    """原生库保留 schema.table 分段；文件视图名中的点仍是名称的一部分。"""
-    ref = db_ref()
-    spec = db_connector.parse_db_ref(ref)
-    if spec.get("source_type") != "duckdb":
-        return db_connector.quote_ident(ref, name)
-    value = str(name).strip()
-    token = r'"(?:[^"]|"")+"|[\w$#]+'
-    if not re.fullmatch(rf'(?:{token})(?:\s*\.\s*(?:{token}))?', value):
-        # 未加引号的空格等按单个表名处理；SQL 片段也会被当作标识符转义。
-        return quote_ident(name)
-    parts = re.findall(token, value)
-    return ".".join(quote_ident(
-        part[1:-1].replace('""', '"') if part.startswith('"') else part,
-    ) for part in parts)
+    """Resolve catalog identity server-side, preserving literal dots and schemas."""
+    return schema(name)["sql_identifier"]
 
 
 def database_name() -> str:
-    """从 db-ref spec 取 database 名（信息架构查询里要拼库名）。"""
-    spec = db_connector.parse_db_ref(db_ref())
-    return spec.get("database") or ""
+    return execution_context()["database"]
 
 
 def source_type() -> str:
-    """当前业务库的 ref type（duckdb = 文件源，信息架构 SQL 不可用，需走 DESCRIBE）。"""
-    spec = db_connector.parse_db_ref(db_ref())
-    return str(spec.get("type") or "")
+    context = execution_context()
+    return context["sql_dialect"] or context["target_sql_dialect"] or ""
 
 
 def duckdb_tables() -> list[str]:
-    """duckdb 文件源的全部视图名。csv 目录源每文件一视图（实时 glob），
-    单文件/excel 源单视图。走 db_connector.tables()（catalog，零文件嗅探）。"""
-    return list(db_connector.tables(db_ref()).get("tables", []))
+    return list(tables().get("tables", []))
+
+
+def preflight(sql: str, static_only: bool = False) -> dict:
+    return db_connector.business_read("validate" if static_only else "preflight", db_ref(), sql=sql)
+
+
+def sample_values(table: str, columns: list[str], limit: int = 20) -> dict:
+    return db_connector.business_read("values", db_ref(), dataset=table, columns=columns, limit=limit)
+
+
+def count_rows(table: str) -> dict:
+    return db_connector.business_read("count", db_ref(), dataset=table)
 
 
 # ==========================================================================
@@ -142,6 +140,16 @@ def glossary_resolve(query_text: str, limit: int = 3) -> dict:
     return db_connector.glossary_resolve(query_text, limit=limit)
 
 
+def metric_recall(query_text: str, limit: int = 5) -> dict:
+    """Return published metric candidates in the current workspace."""
+    return db_connector.metric_recall(query_text, limit=limit, db_ref=db_ref())
+
+
+def field_context(table_specs: list[dict]) -> dict:
+    """Read published profiles for recalled fields; no fresh business sampling."""
+    return db_connector.semantic_field_context(db_ref(), table_specs)
+
+
 def semantic_vector_recall(query_text: str, limit: int = 20) -> dict:
     """schema 向量表/列语义召回（按当前业务库 db_ref 反查注册源）。
 
@@ -149,3 +157,13 @@ def semantic_vector_recall(query_text: str, limit: int = 20) -> dict:
     不可达时抛 RuntimeError，调用方降级纯词法。
     """
     return db_connector.semantic_vector_recall(db_ref(), query_text, limit=limit)
+
+
+def value_matches(query_text: str, limit: int = 20) -> dict:
+    """Values from the semantic value dictionary that the question mentions, with their columns.
+
+    ``ambiguous`` is non-empty when one value exists under several columns.
+    Raises RuntimeError when the service is unreachable; callers treat that as
+    a missing enhancement, not a failure.
+    """
+    return db_connector.semantic_value_matches(db_ref(), query_text, limit=limit)

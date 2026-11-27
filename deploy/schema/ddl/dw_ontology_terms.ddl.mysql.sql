@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS `dw_ontology_terms` (
   `source`             VARCHAR(20) NOT NULL DEFAULT 'manual',
   `tags`               VARCHAR(500) NOT NULL DEFAULT '',
   `fingerprint`        VARCHAR(80) NOT NULL DEFAULT '',
+  `scope_json`         LONGTEXT NOT NULL,
   `created_at`         VARCHAR(30) NOT NULL,
   `updated_at`         VARCHAR(30) NOT NULL,
   PRIMARY KEY (`term_id`),

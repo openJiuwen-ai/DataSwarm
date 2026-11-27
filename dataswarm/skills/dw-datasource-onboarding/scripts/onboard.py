@@ -24,6 +24,7 @@ _DW_COMMON_DIR = (Path(__file__).resolve().parent.parent.parent
 if str(_DW_COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(_DW_COMMON_DIR))
 import dw_client  # type: ignore  # noqa: E402
+from llm_json import load_file, loads  # noqa: E402
 
 for _s in (sys.stdout, sys.stderr):
     try:
@@ -109,7 +110,11 @@ def _dwcli_json(group: str, action: str, body: dict) -> dict:
 def action_register(spec: dict) -> dict:
     source_type = str(spec.get("type", "")).strip()
     source_id = str(spec.get("source_id", "")).strip()
-    params = dict(spec.get("params") or {})
+    params_raw = spec.get("params")
+    if params_raw is not None and not isinstance(params_raw, dict):
+        return {"ok": False, "stage": "register",
+                "error": "spec.params must be a JSON object"}
+    params = dict(params_raw or {})
     rebind = bool(spec.get("rebind"))
     if not source_type or not source_id or not params:
         return {"ok": False, "stage": "register",
@@ -175,10 +180,10 @@ def main() -> None:
             if spec_path.suffix.lower() != ".json" or spec_path.is_symlink() or not spec_path.is_file():
                 raise OSError("--spec-file must be an existing regular .json file (symlinks are not allowed)")
             delete_spec = args.delete_spec
-            spec = json.loads(spec_path.read_text(encoding="utf-8"))
+            spec = load_file(spec_path, expect="dict")
         else:
-            spec = json.loads(sys.stdin.read())
-    except (OSError, json.JSONDecodeError) as exc:
+            spec = loads(sys.stdin.read(), expect="dict")
+    except (OSError, ValueError) as exc:
         _emit({"ok": False, "error": f"读取 spec 失败: {exc}"})
         sys.exit(1)
     finally:

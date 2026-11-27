@@ -37,6 +37,16 @@ export JIUWENSWARM_WEB_PORT="${JIUWENSWARM_WEB_PORT:-30000}"
 export JIUWENSWARM_GATEWAY_PORT="${JIUWENSWARM_GATEWAY_PORT:-30001}"
 export JIUWENSWARM_FRONTEND_PORT="${JIUWENSWARM_FRONTEND_PORT:-16173}"
 
+# 分析链路 shell 统一（与 dataswarm_boot.py 的 setdefault 同款）：偏好 bash 时
+# 系统提示与 shell_type=auto 路由统一走 Git Bash，消除 bash/PowerShell 混用漂移
+export JIUWENSWARM_SHELL_PREFERENCE="${JIUWENSWARM_SHELL_PREFERENCE-bash}"
+
+# 编码统一（UTF-8 everywhere）：与 dataswarm_boot.py 的 L1 注入同款——
+# dev 形态服务树（含 skill 脚本/dwcli 子进程）stdio 与 open() 默认编码
+# 不随 Windows locale（GBK）漂移。显式设置优先。
+export PYTHONUTF8="${PYTHONUTF8:-1}"
+export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8:replace}"
+
 # agent 的 bash 工具继承服务进程 PATH：前置仓库 venv 的可执行目录——uv run
 # 起 python -m 不激活 venv，PATH 无 venv 时 agent 的裸 `python` 解析到系统
 # Python（无 jiuwenswarm）→ ModuleNotFoundError 后自愈换完整路径白烧轮次
@@ -318,9 +328,17 @@ start_services() {
 
   load_repo_env
 
-  log "预同步依赖（uv sync --locked），避免两个 uv run 并发下载..."
-  if ! uv sync --locked; then
-    err "依赖同步失败，请先解决 uv sync --locked 的报错"
+  # 可选数据源驱动（ds-* extras）默认不在同步范围内：--inexact 保留已装的驱动，
+  # 不会在每次重启时被卸掉；DATASWARM_UV_EXTRAS="ds-all ds-sqlserver" 可显式声明要装的 extras。
+  local sync_args=(--locked --inexact)
+  local extra
+  local extras="${DATASWARM_UV_EXTRAS:-}"
+  for extra in ${extras//,/ }; do
+    sync_args+=(--extra "$extra")
+  done
+  log "预同步依赖（uv sync ${sync_args[*]}），避免两个 uv run 并发下载..."
+  if ! uv sync "${sync_args[@]}"; then
+    err "依赖同步失败，请先解决 uv sync ${sync_args[*]} 的报错"
     return 1
   fi
 

@@ -255,24 +255,25 @@ def quote_ident(db_ref: str, name: str) -> str:
 # ==========================================================================
 # 数据访问（经 dwcli，保留 db_connector 签名）
 # ==========================================================================
-def query(db_ref: str, sql: str, limit: int | None = 10000, role: str = "business") -> dict:
-    """只读查询 → {row_count, columns, rows, truncated, elapsed_ms, db}（db_connector 兼容 shape）。
+def business_read(operation: str, db_ref: str = "", **arguments) -> dict:
+    """Call the shared authorized source API without interpreting source types."""
+    import tempfile
 
-    注意：**不支持 params**——dwcli 无 params 通道，SQL 一律字面拼（占位符会原样
-    发给服务端导致执行报错）。需要参数化查询时在调用方 f-string 拼值。
-    """
+    body = {"operation": operation, "db_ref": db_ref, **arguments}
+    with tempfile.TemporaryDirectory(prefix="dw_read_") as directory:
+        path = Path(directory) / "request.json"
+        path.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+        return _dwcli("datasource", "read", "--json-file", str(path))
+
+
+def query(db_ref: str, sql: str, limit: int | None = 10000, role: str = "business") -> dict:
+    """Read through the shared service, preserving identity and completeness."""
+    if role == "business":
+        return {**business_read("query", db_ref, sql=sql, limit=limit), "db": {"ref": db_ref}}
     args = ["sql", "run", "--db-ref", db_ref, "--sql", sql, "--role", role]
     if limit is not None:
         args += ["--limit", str(limit)]
-    payload = _dwcli(*args)
-    return {
-        "row_count": payload.get("row_count", 0),
-        "truncated": payload.get("truncated", False),
-        "columns": payload.get("columns", []),
-        "rows": payload.get("rows", []),
-        "elapsed_ms": payload.get("elapsed_ms", 0),
-        "db": {"type": None, "ref": db_ref},
-    }
+    return _dwcli(*args)
 
 
 def query_dict(db_ref: str, sql: str, limit: int | None = 10000, role: str = "business") -> list[dict]:
@@ -289,6 +290,10 @@ def tables(db_ref: str, role: str = "business") -> dict:
     此处归一化回字符串列表，保持 db_connector 签名兼容。
     metadata role 经 sql run（SQLite 用 sqlite_master，MySQL/Doris 用 SHOW TABLES）。
     """
+    if role == "business":
+        payload = business_read("catalog", db_ref)
+        names = [item["sql_identifier"] for item in payload["datasets"]]
+        return {**payload, "tables": names, "table_count": len(names)}
     spec = parse_db_ref(db_ref)
     if role == "metadata":
         if spec.get("type") == "sqlite":
@@ -324,6 +329,8 @@ def schema(db_ref: str, table: str, role: str = "business") -> dict:
     ``resolved_table`` 是服务端目录里的规范表名：带 schema 的目录（DuckDB
     原生库 / SQL Server）接受裸表名后返回全限定名，调用方据此拼后续 SQL。
     """
+    if role == "business":
+        return business_read("schema", db_ref, dataset=table)
     spec = parse_db_ref(db_ref)
     db_name = spec.get("database") or ""
     payload = _dwcli("databases", "table", "--db", db_name, "--table", table,
@@ -332,6 +339,11 @@ def schema(db_ref: str, table: str, role: str = "business") -> dict:
             "resolved_table": payload.get("name") or table,
             "columns": payload.get("columns", payload.get("fields", [])),
             "db": {"type": spec.get("type"), "ref": db_ref}}
+
+
+def schema_columns(db_ref: str) -> dict:
+    """Read catalog columns through the shared source identity."""
+    return business_read("schema-columns", db_ref)
 
 
 def list_indexes(db_ref: str, table: str) -> dict:
@@ -398,6 +410,24 @@ def glossary_resolve(query_text: str, limit: int = 3) -> dict:
     return _dwcli("glossary", "resolve", "--q", query_text, "--limit", str(limit))
 
 
+def metric_recall(query_text: str, limit: int = 5, *, db_ref: str = "") -> dict:
+    """Discover published metrics; raises RuntimeError, OSError or TimeoutExpired on transport failure."""
+    args = ["metric-v2", "recall", "--q", query_text, "--limit", str(limit)]
+    if db_ref:
+        args += ["--db-ref", db_ref]
+    return _dwcli(*args)
+
+
+def semantic_field_context(db_ref: str, table_specs: list[dict]) -> dict:
+    """Read bounded stored field observations through the authorized semantic API."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="field-context-") as folder:
+        path = Path(folder) / "request.json"
+        path.write_text(json.dumps({"db_ref": db_ref, "tables": table_specs}), encoding="utf-8")
+        return _dwcli("semantic", "field-context", "--json-file", str(path))
+
+
 def semantic_vector_recall(db_ref: str, query_text: str, limit: int = 20) -> dict:
     """schema 向量表/列语义召回（服务端 FAISS，按 db_ref 反查注册源）。
 
@@ -407,4 +437,17 @@ def semantic_vector_recall(db_ref: str, query_text: str, limit: int = 20) -> dic
         服务不可达时抛 RuntimeError，调用方降级词法召回。
     """
     return _dwcli("semantic", "vector-recall", "--db-ref", db_ref,
+                  "--q", query_text, "--limit", str(limit))
+
+
+def semantic_value_matches(db_ref: str, query_text: str, limit: int = 20) -> dict:
+    """Value-dictionary entries that occur literally in the question (server side, by db_ref).
+
+    Returns:
+        ``{"values": [{value, table, column, match_type}], "ambiguous":
+        [{value, columns}], "warnings": [...]}``. An unbound source returns empty
+        lists plus ``source_not_bound``; an unreachable service raises
+        RuntimeError so the caller can carry on without it.
+    """
+    return _dwcli("semantic", "value-matches", "--db-ref", db_ref,
                   "--q", query_text, "--limit", str(limit))

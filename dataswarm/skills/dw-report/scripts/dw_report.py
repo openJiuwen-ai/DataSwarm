@@ -6,6 +6,7 @@
                                [--html report.html] [--md report.md] [--strict]
     python dw_report.py verify --html report.html [--min-charts 1]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,7 +22,7 @@ if str(HERE) not in sys.path:
 
 for _stream in (sys.stdout, sys.stderr):
     try:
-        _stream.reconfigure(encoding="utf-8")
+        getattr(_stream, "reconfigure")(encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
 
@@ -58,11 +59,12 @@ def _summary(spec: dict, charts: dict, page: str) -> str:
 
 def cmd_validate(args: argparse.Namespace) -> int:
     spec = load_spec(args.spec)
-    errors = validate_spec(spec)
+    errors = validate_spec(spec, draft=True)
     if errors:
         print(json.dumps({"ok": False, "errors": errors}, ensure_ascii=False, indent=2))
         return 1
-    print(json.dumps({"ok": True, "page": detect_page(spec)}, ensure_ascii=False))
+    print(json.dumps({"ok": True, "page": detect_page(spec), "validation_scope": "draft_structure",
+                      "next_action": "草稿结构通过；分析报告交给analysis_task finish绑定身份并校验证据后交付。"}, ensure_ascii=False))
     return 0
 
 
@@ -77,19 +79,15 @@ def cmd_render(args: argparse.Namespace) -> int:
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     default_dir = _analysis_dir()
-    html_path = _check_output(args.html, ".html") or (
-        (default_dir / f"report_{stamp}.html") if not args.md else None
-    )
-    md_path = _check_output(args.md, ".md") or (
-        (default_dir / f"report_{stamp}.md") if not args.html else None
-    )
+    html_path = _check_output(args.html, ".html") or ((default_dir / f"report_{stamp}.html") if not args.md else None)
+    md_path = _check_output(args.md, ".md") or ((default_dir / f"report_{stamp}.md") if not args.html else None)
     if html_path is None and md_path is None:
         print("[dw-report] 至少需要一个输出载体（--html / --md）", file=sys.stderr)
         return 1
 
     try:
         resolved = resolve(spec, data_path=args.data, db=args.db, strict=args.strict)
-    except (ValueError, FileNotFoundError) as exc:
+    except (ValueError, OSError, ImportError) as exc:
         print(f"[dw-report] {exc}", file=sys.stderr)
         return 1
     charts = resolved.get("_charts") or {}
@@ -103,7 +101,8 @@ def cmd_render(args: argparse.Namespace) -> int:
         code = inline_echarts(html_path, ASSETS / "echarts.min.js")
         if code != 0:
             return code
-        gate = verify_html(html_path, min_charts=1 if charts else 0)
+        expected_chart = any(section.get("chart") for section in resolved.get("sections") or [])
+        gate = verify_html(html_path, min_charts=1 if charts or expected_chart else 0)
         if gate:
             print("[dw-report] 产物门禁失败：", file=sys.stderr)
             for error in gate:
@@ -113,7 +112,11 @@ def cmd_render(args: argparse.Namespace) -> int:
 
     if md_path is not None:
         md_path.parent.mkdir(parents=True, exist_ok=True)
-        md_path.write_text(render_markdown(resolved), encoding="utf-8")
+        markdown = render_markdown(resolved)
+        if not markdown.strip():
+            print("[dw-report] Markdown report is empty", file=sys.stderr)
+            return 1
+        md_path.write_text(markdown, encoding="utf-8")
         formats.append("md")
 
     result = {
@@ -125,6 +128,9 @@ def cmd_render(args: argparse.Namespace) -> int:
         "size_bytes": html_path.stat().st_size if html_path else 0,
         "summary": _summary(resolved, charts, detect_page(resolved)),
         "warnings": warnings,
+        "validation": {"spec": "passed", "html": "passed" if html_path else "not_requested",
+                       "markdown": "passed" if md_path else "not_requested"},
+        "next_action": "所请求格式已生成并通过程序检查；交付返回文件并简短说明结论。",
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
@@ -153,7 +159,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_render.add_argument("--db", help="db-ref（sql 段取数）")
     p_render.add_argument("--html", help="HTML 输出路径")
     p_render.add_argument("--md", help="Markdown 输出路径")
-    p_render.add_argument("--strict", action="store_true", help="证据缺失/哈希不符时报错")
+    p_render.add_argument("--strict", action="store_true", help="兼容参数；分析证据始终严格校验，standalone 不使用证据")
     p_render.set_defaults(func=cmd_render)
 
     p_verify = sub.add_parser("verify", help="校验 HTML 产物")

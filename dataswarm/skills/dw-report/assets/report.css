@@ -104,7 +104,7 @@ h1 {
   letter-spacing: .06em; white-space: nowrap;
 }
 h2 { font-size: 19px; line-height: 1.45; margin: 0; font-weight: 650; letter-spacing: -.01em; }
-.conclusion { font-size: 15px; font-weight: 600; margin: 8px 0 16px; }
+.conclusion { font-size: 15px; font-weight: 400; margin: 8px 0 16px; }
 .narrative { color: var(--muted); margin: 0 0 12px; }
 .narrative p { margin: 0 0 8px; }
 .narrative p:last-child { margin-bottom: 0; }

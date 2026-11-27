@@ -1,4 +1,8 @@
 CREATE TABLE IF NOT EXISTS `dw_metric_verified_sql` (
+  `source_id` VARCHAR(100) NOT NULL DEFAULT '',
+  `metric_keys_json` TEXT NOT NULL,
+  `feature_json` TEXT NOT NULL,
+  `validated_status` VARCHAR(30) NOT NULL DEFAULT 'unverified',
   `verified_id`         VARCHAR(100) NOT NULL,
   `workspace_id`        VARCHAR(100) NOT NULL,
   `revision_ids_json`   TEXT NULL,

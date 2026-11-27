@@ -47,3 +47,5 @@
 | 2026-09-16 | dw_datasources | 加 description 列（备注，v1.4） | 数据源用途备注；双方言 DDL 已更新；存量库由 `datasource/store._ensure_table` 运行期幂等 ALTER 自动加列（首装库 no-op），无需手工 ALTER |
 | 2026-09-16 | table_lineage / column_lineage | 加 business_ref 列（血缘跨数据源隔离，v1.5） | 写入时记录归属业务数据源规范化 ref；查询侧按当前绑定 ref 严格过滤（NULL 存量行不显示，任务重新 publish/执行后重建）；双方言 DDL 已更新；存量库由 `lineage/writer.ensure_schema` 运行期幂等 ALTER 自动加列（首装库 no-op），无需手工 ALTER |
 | 2026-10-08 | dw_metric_defs / dw_metric_revisions / dw_metric_bindings / dw_metric_releases / dw_metric_concept_map / dw_metric_query_log | 新增指标语义层六表（v1.6） | **按「元数据库 Doris 已弃用」决策，本批起新表 DDL 写 sqlite + mysql 双方言，不再写 doris**——mysql 文件须等 `ensure.py` 的 `_DIALECT_SUFFIX` 扩展后才被执行（阶段 0 前置）；`dw_metric_verified_sql`（经确认 SQL 复用池）留待 LLM 层提交一并加 |
+| 2026-11-06 | dw_business_knowledge | 加 active/source_ref 两列（换源伪删除） | 知识派生资产跟数据源走：换源 active=0、重绑激活（召回/评审/派生只看激活，物理删除仅在删工作空间）；source_ref = 脱敏 db-ref 锚点；**存量库需手工 ALTER ADD COLUMN 2 列 + 回填 source_ref（schema_json→列），或重建元库** |
+| 2026-11-08 | dw_business_knowledge | source_ref 改为物理身份摘要（无结构变更） | 派生资产以 `physical:<SHA256(规范化无凭据 ref)>` 记录数据源物理身份，用于换绑时的资产隔离与重绑激活；展示摘要保留于 `source_json.schema.db_ref`。默认创建新工作空间使用当前结构。 |

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dataswarm"
-version = "0.0.1.beta"
+version = "0.0.2.beta"
 description = "DataSwarm"
 requires-python = ">=3.11,<3.14"
 license = { text = "Apache-2.0" }
@@ -54,6 +54,7 @@ dependencies = [
     "pyyaml>=6.0,<7",
     "httpx[http2,socks]>=0.27,<1.0",
     "certifi>=2024.8.30,<2027",
+    "charset-normalizer>=3.4,<4",
     "json-repair>=0.30.0,<0.60",
     "gitcode-api>=1.2.20,<2",
     "faiss-cpu>=1.7.0,<2",
@@ -214,6 +215,13 @@ jiuwenswarm = [
     "resources/agent/workspace/skills/project-maintainer/**/*",
     "resources/agent/workspace/skills/project-maintainer/*",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.mypy]
+# skill 是运行时资产（随归档同步到 runtime 目录执行），不进包级类型检查
+exclude = ["resources/agent/workspace/skills/"]
 
 [tool.uv]
 default-groups = ['dev']

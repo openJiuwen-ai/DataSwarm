@@ -1,6 +1,6 @@
 ---
 name: dw-metrics
-description: 指标语义层 V2。当用户提到"指标问答/销售额多少/看下GMV/客单价/指标趋势/有哪些指标/什么叫某指标/指标定义/导入指标/Ossie/发布指标/指标血缘依赖/metric/指标取数"等指标相关的查数、找指标、导入发布诉求时使用。指标问答走服务端确定性编译（权威口径）；裸表探索走 nl2sql。
+description: 查询已发布指标的数值、排名、分组与趋势数据，解释指标定义或列指标；结构化 query 走确定性编译。需要新的趋势解读、原因诊断或经营分析交 dw-analysis；无治理指标覆盖的纯取数交 nl2sql。导入/发布仅在明确要求时执行。
 layer: L3
 allowed_tools: [bash, read_file]
 ---
@@ -17,9 +17,10 @@ allowed_tools: [bash, read_file]
 
 | 诉求 | 用哪个 |
 |------|--------|
-| 指标问答/趋势/按维度看指标（已建模） | **本 skill** |
+| 指标数值/趋势数据/排名/按维度看指标（已建模） | **本 skill**；材料明确后直接结构化 query，不额外 ask 重识别入口 |
+| 趋势解读/原因诊断/综合经营分析 | `dw-analysis`，保留整句复合目标 |
 | 导入 Ossie 指标模型 / 发布修订 / 确认口径映射 | **本 skill**（写操作，需用户明确要求） |
-| 裸表探索式分析（没建模、临时取数） | `nl2sql` |
+| 裸表纯查询（没建模、临时取数） | `nl2sql`；无覆盖不自动升级分析 |
 | 看板管理 | `dw-bi-dashboard` |
 
 ## ⛔ 硬性约束
@@ -43,6 +44,7 @@ S={skill_directory}/scripts/metric_query.py
 
 # 只读
 python $S list                                    # 指标清单（metric_key/单位/是否已发布）
+python -m jiuwenswarm.cli.dwcli metric-v2 recall --q "用户原话" --limit 5  # 有界候选发现，返回发布定义
 python $S get --key commerce.gmv                  # 详情：修订历史/口径/维度/粒度/依赖/待确认映射数
 python $S context --key commerce.gmv              # 语义上下文：概念/分子分母/字段（需已发布）
 python $S releases                                # 发布批次与投影状态

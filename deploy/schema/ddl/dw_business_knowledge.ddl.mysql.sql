@@ -1,4 +1,7 @@
 CREATE TABLE IF NOT EXISTS `dw_business_knowledge` (
+  `payload_version` INT NOT NULL DEFAULT 1,
+  `payload_json` LONGTEXT NOT NULL,
+  `validation_json` LONGTEXT NOT NULL,
   `asset_id` VARCHAR(64) NOT NULL PRIMARY KEY,
   `workspace_id` VARCHAR(128) NOT NULL,
   `asset_type` VARCHAR(32) NOT NULL,
@@ -12,5 +15,7 @@ CREATE TABLE IF NOT EXISTS `dw_business_knowledge` (
   `created_at` VARCHAR(30) NOT NULL,
   `updated_at` VARCHAR(30) NOT NULL,
   `published_at` VARCHAR(30) NOT NULL DEFAULT '',
+  `active` TINYINT NOT NULL DEFAULT 1,
+  `source_ref` VARCHAR(128) NOT NULL DEFAULT '',
   KEY `idx_dw_knowledge_scope` (`workspace_id`, `status`, `asset_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS "dw_ontology_terms" (
   "source" TEXT NOT NULL DEFAULT 'manual',
   "tags" TEXT NOT NULL DEFAULT '',
   "fingerprint" TEXT NOT NULL DEFAULT '',
+  "scope_json" TEXT NOT NULL DEFAULT '{}',
   "created_at" TEXT NOT NULL,
   "updated_at" TEXT NOT NULL
 );

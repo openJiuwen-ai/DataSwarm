@@ -13,7 +13,7 @@ _root = os.environ.get("JIUWENSWARM_DATA_DIR") or Path.home() / ".dataswarm"
 RT = Path(_root) / "agent" / "workspace" / "skills"
 DIRS = ["dw-task-define", "dw-workflow-define", "dw-task-schedule", "dw-task-execute",
         "nl2sql", "dw-report", "dw-bi-dashboard",
-        "dw-db-connector", "_dw_common",
+        "dw-db-connector", "dw-datasource-onboarding", "dw-metrics", "_dw_common",
         "data-insight", "dw-warehouse-build", "dw-warehouse-design",
         "dw-analysis", "dw-task-orchestration"]
 

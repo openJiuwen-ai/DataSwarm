@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from render import components as c
+from render.normalize import as_items
 
 TEMPLATES = Path(__file__).resolve().parents[2] / "templates"
 _MISSING = re.compile(r"\{\{[a-z_]+\}\}")
@@ -45,7 +46,7 @@ def _looks_like_time(chart: Any) -> bool:
         axis = axis[0]
     if not isinstance(axis, dict):
         return False
-    values = axis.get("data") or []
+    values = as_items(axis.get("data"))
     if not values:
         return False
     sample = str(values[0])
@@ -72,14 +73,15 @@ def detect_block(section: dict[str, Any]) -> str:
     title = str(section.get("title") or "")
     if re.search(r"对比|比较|差异|VS|vs", title):
         return "compare"
-    if (section.get("_table") or section.get("table")) and not section.get("chart"):
-        return "table"
+    if isinstance(section.get("_table"), dict) or isinstance(section.get("table"), dict):
+        if not section.get("chart"):
+            return "table"
     chart = section.get("chart")
     if _chart_series_type(chart) in ("line", "area") or _looks_like_time(chart):
         return "trend"
     if chart not in (None, "", {}):
         return "chart"
-    if section.get("_table") or section.get("table"):
+    if isinstance(section.get("_table"), dict) or isinstance(section.get("table"), dict):
         return "table"
     return "chart"
 
@@ -102,8 +104,15 @@ def render_section(
         if chart_option
         else ""
     )
-    sql_html = c.sql_details(section.get("sql"), f"{index:02d}")
+    sql_html = c.sql_details(section.get("sql"), f"{index:02d}", section.get("computation_method", ""))
     narrative_html = c.narrative(section.get("narrative"))
+    supporting = "".join(
+        c.table_html(table)
+        for table in section.get("supporting_tables", [])
+        if isinstance(table, dict)
+    )
+    if supporting:
+        narrative_html += f"<details><summary>补充数据</summary>{supporting}</details>"
     chart_item = {"id": chart_id, "option": chart_option} if chart_option else None
 
     slots = {
@@ -121,7 +130,7 @@ def render_section(
         html = render_template("blocks/trend.html", **slots)
     elif block == "compare":
         slots["compare_head"] = c.compare_head(section)
-        slots["diff_table"] = c.diff_table(section)
+        slots["diff_table"] = c.diff_table(section) or slots["table"]
         html = render_template("blocks/compare.html", **slots)
     elif block == "attribution":
         slots["banner"] = c.banner(section)
