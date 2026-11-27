@@ -2,8 +2,9 @@
 
 Applies to the `dataswarm` whl package (`pip install` → `dataswarm-init` →
 `dataswarm-start`, three steps to a running instance). This guide covers the
-whl package (`pip install` form). For the base JiuwenSwarm installation, see
-[InstallGuide](InstallGuide.md).
+whl package (`pip install` form); the base JiuwenSwarm (`openjiuwen`
+dependency) is installed automatically during `pip install` and needs no
+separate installation.
 
 ## 1. Prerequisites
 
