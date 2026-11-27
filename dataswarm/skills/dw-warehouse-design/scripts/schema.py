@@ -7,11 +7,67 @@
 """
 from __future__ import annotations
 
-import json
 import re
+import sys
 import difflib
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+# _dw_common/scripts——dev 与 runtime 通用；缺失时回退项目根 resources 路径
+# （同 render.py 模式）。
+_DW_COMMON_DIR = Path(__file__).resolve().parent.parent.parent / "_dw_common" / "scripts"
+if _DW_COMMON_DIR.is_dir():
+    if str(_DW_COMMON_DIR) not in sys.path:
+        sys.path.insert(0, str(_DW_COMMON_DIR))
+else:
+    _DW_COMMON_FALLBACK = (
+        Path(__file__).resolve().parents[7]
+        / "jiuwenswarm" / "resources" / "agent" / "workspace" / "skills"
+        / "_dw_common" / "scripts"
+    )
+    if _DW_COMMON_FALLBACK.is_dir() and str(_DW_COMMON_FALLBACK) not in sys.path:
+        sys.path.insert(0, str(_DW_COMMON_FALLBACK))
+
+from llm_json import as_items, load_file, record_warning  # noqa: E402
+
+
+def _note_drift(value: Any, path: str) -> None:
+    """数组字段收到单值：记录容忍告警。"""
+    if isinstance(value, str):
+        kind = "字符串"
+    elif isinstance(value, dict):
+        kind = "对象"
+    else:
+        return
+    record_warning(None, f"{path}: 期望数组，收到{kind}（已按单条处理）")
+
+
+def _dict_list(value: Any, path: str) -> list[dict]:
+    """LLM JSON 列表归一化：单对象当一条；非对象条目大声失败。"""
+    _note_drift(value, path)
+    items = as_items(value)
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"{path}[{index}] 必须是 JSON 对象")
+    return items
+
+
+def _text_list(value: Any, path: str) -> list[str]:
+    _note_drift(value, path)
+    items = as_items(value)
+    for index, item in enumerate(items):
+        if isinstance(item, (dict, list)):
+            raise ValueError(f"{path}[{index}] 必须是标量")
+    return [str(item) for item in items]
+
+
+def _str_map(value: Any, path: str) -> dict[str, str]:
+    if value in (None, ""):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} 必须是 JSON 对象")
+    return {str(key): str(item) for key, item in value.items()}
 
 LAYER_ORDER = {"ODS": 0, "DWD": 1, "DWS": 2, "ADS": 3}
 TIER_MAX_LAYER = {"L1_INGEST": 0, "L2_MODELING": 1, "L3_FULL_DW": 3}
@@ -107,8 +163,8 @@ def load_spec(path: str | Path) -> SemanticSpec:
     if not p.is_file():
         raise ValueError(f"语义规格文件不存在: {p}")
     try:
-        data = json.loads(p.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError as exc:
+        data = load_file(p)
+    except (OSError, ValueError) as exc:
         raise ValueError(f"语义规格不是合法 JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError("语义规格根节点必须是 JSON 对象")
@@ -130,9 +186,7 @@ def spec_from_json(data: dict) -> SemanticSpec:
         )
 
     tables: list[TableSpec] = []
-    for i, t in enumerate(data.get("tables") or []):
-        if not isinstance(t, dict):
-            raise ValueError(f"tables[{i}] 必须是 JSON 对象")
+    for i, t in enumerate(_dict_list(data.get("tables"), "tables")):
         short = str(t.get("short_name") or "").strip()
         layer = str(t.get("layer") or "").strip().upper()
         if not short:
@@ -146,35 +200,33 @@ def spec_from_json(data: dict) -> SemanticSpec:
                 nullable=bool(c.get("nullable", True)),
                 comment=str(c.get("comment") or ""),
             )
-            for c in (t.get("columns") or [])
+            for c in _dict_list(t.get("columns"), f"tables[{i}].columns")
         ]
         joins = [
             Join(
                 left=str(j.get("left") or ""),
                 right=str(j.get("right") or ""),
                 on=[JoinOn(str(obj.get("left_col") or ""), str(obj.get("right_col") or ""))
-                    for obj in (j.get("on") or [])],
+                    for obj in _dict_list(j.get("on"), f"tables[{i}].joins[{index}].on")],
                 kind=str(j.get("type") or "left").lower(),
             )
-            for j in (t.get("joins") or [])
+            for index, j in enumerate(_dict_list(t.get("joins"), f"tables[{i}].joins"))
         ]
         tables.append(TableSpec(
             short_name=short,
             layer=layer,
             columns=columns,
-            source_tables=[str(s) for s in (t.get("source_tables") or [])],
-            source_aliases={str(k): str(v) for k, v in (t.get("source_aliases") or {}).items()},
+            source_tables=_text_list(t.get("source_tables"), f"tables[{i}].source_tables"),
+            source_aliases=_str_map(t.get("source_aliases"), f"tables[{i}].source_aliases"),
             joins=joins,
-            column_exprs={str(k): str(v) for k, v in (t.get("column_exprs") or {}).items()},
-            group_by=[str(g) for g in (t.get("group_by") or [])],
+            column_exprs=_str_map(t.get("column_exprs"), f"tables[{i}].column_exprs"),
+            group_by=_text_list(t.get("group_by"), f"tables[{i}].group_by"),
             where=str(t.get("where") or "").strip(),
             comment=str(t.get("comment") or ""),
         ))
 
     metrics: list[MetricSpec] = []
-    for i, m in enumerate(data.get("metrics") or []):
-        if not isinstance(m, dict):
-            raise ValueError(f"metrics[{i}] 必须是 JSON 对象")
+    for i, m in enumerate(_dict_list(data.get("metrics"), "metrics")):
         metric_name = str(m.get("metric_name") or "").strip()
         table_name = str(m.get("table_name") or "").strip()
         expr = str(m.get("expr") or "").strip()
@@ -188,7 +240,7 @@ def spec_from_json(data: dict) -> SemanticSpec:
             raise ValueError(f"metrics[{i}].table_name 必须以 dws_/ads_ 开头: {table_name}")
         if not expr:
             raise ValueError(f"metrics[{i}].expr 必填（聚合表达式）")
-        sources = [str(s) for s in (m.get("source_tables") or [])]
+        sources = _text_list(m.get("source_tables"), f"metrics[{i}].source_tables")
         if not sources:
             raise ValueError(f"metrics[{i}].source_tables 必填")
         metrics.append(MetricSpec(
@@ -196,14 +248,14 @@ def spec_from_json(data: dict) -> SemanticSpec:
             display_name=str(m.get("display_name") or metric_name),
             value_type=str(m.get("value_type") or "DOUBLE"),
             expr=expr,
-            grain=[str(g) for g in (m.get("grain") or [])],
-            grain_exprs={str(k): str(v) for k, v in (m.get("grain_exprs") or {}).items()},
+            grain=_text_list(m.get("grain"), f"metrics[{i}].grain"),
+            grain_exprs=_str_map(m.get("grain_exprs"), f"metrics[{i}].grain_exprs"),
             source_tables=sources,
-            source_aliases={str(k): str(v) for k, v in (m.get("source_aliases") or {}).items()},
+            source_aliases=_str_map(m.get("source_aliases"), f"metrics[{i}].source_aliases"),
             table_name=table_name,
             where=str(m.get("where") or "").strip(),
             caliber=str(m.get("caliber") or ""),
-            dimensions=[str(d) for d in (m.get("dimensions") or [])],
+            dimensions=_text_list(m.get("dimensions"), f"metrics[{i}].dimensions"),
         ))
     return SemanticSpec(name=name, business=business,
                         purpose=str(data.get("purpose") or ""),

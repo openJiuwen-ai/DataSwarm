@@ -1072,12 +1072,13 @@ wheels = [
 
 [[package]]
 name = "dataswarm"
-version = "0.0.1b0"
+version = "0.0.2b0"
 source = { editable = "." }
 dependencies = [
     { name = "a2ui-agent-sdk" },
     { name = "aiosqlite" },
     { name = "certifi" },
+    { name = "charset-normalizer" },
     { name = "chromadb" },
     { name = "croniter" },
     { name = "dingtalk-stream" },
@@ -1282,6 +1283,7 @@ requires-dist = [
     { name = "asyncssh", marker = "extra == 'ssh'", specifier = ">=2.24.0,<2.25" },
     { name = "asyncssh", marker = "extra == 'test'", specifier = ">=2.24.0,<2.25" },
     { name = "certifi", specifier = ">=2024.8.30,<2027" },
+    { name = "charset-normalizer", specifier = ">=3.4,<4" },
     { name = "chromadb", specifier = ">=1.5.0,<2" },
     { name = "coverage", marker = "extra == 'test'", specifier = ">=7.7.1" },
     { name = "croniter", specifier = ">=2.0.0,<7" },

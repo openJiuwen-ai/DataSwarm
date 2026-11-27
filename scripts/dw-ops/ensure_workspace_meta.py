@@ -13,8 +13,8 @@
     1. ensure_system_schema —— 按 deploy/schema DDL 建缺失表
     2. 按 DDL 补列（通用机制）—— 逐 DDL 文件解析声明列，缺哪列按 DDL 类型 ALTER 补上
        （这是主机制：DDL 是列结构唯一真相源，新加列不需要在脚本里再登记一次）
-    3. 模块接口兜底 —— metrics.ensure_semantic_columns / inspection_service
-       .ensure_review_columns / .ensure_runs_columns（覆盖 DDL 之外的历史列）
+    3. 巡检模块接口兜底 —— inspection_service.ensure_review_columns /
+       ensure_runs_columns（覆盖 DDL 之外的历史列）
 
 用法（部署目录下，用部署 venv 跑）：
     /opt/dataswarm/.venv/bin/python scripts/dw-ops/ensure_workspace_meta.py
@@ -43,8 +43,8 @@ def _runtime_schema_dst() -> Path:
     data_dir = Path(configured).expanduser() if configured else Path.home() / ".jiuwenswarm"
     return data_dir / "deploy-schema"
 
-_COLUMN_RE = re.compile(r"^`([^`]+)`\s+\S")
-_TYPE_RE = re.compile(r"^`([^`]+)`\s+([A-Za-z][A-Za-z0-9_]*(?:\s*\([^)]*\))?)")
+_COLUMN_RE = re.compile(r'^([`"])([^`"]+)\1\s+\S')
+_TYPE_RE = re.compile(r'^([`"])([^`"]+)\1\s+([A-Za-z][A-Za-z0-9_]*(?:\s*\([^)]*\))?)')
 
 
 def _ddl_columns_typed(ddl_text: str) -> list[tuple[str, str]]:
@@ -67,7 +67,7 @@ def _ddl_columns_typed(ddl_text: str) -> list[tuple[str, str]]:
             continue
         match = _TYPE_RE.match(stripped)
         if match:
-            out.append((match.group(1), " ".join(match.group(2).split())))
+            out.append((match.group(2), " ".join(match.group(3).split())))
     return out
 
 
@@ -112,7 +112,7 @@ def _ddl_columns(ddl_text: str) -> list[str]:
             continue
         match = _COLUMN_RE.match(stripped)
         if match:
-            cols.append(match.group(1))
+            cols.append(match.group(2))
     return cols
 
 
@@ -253,13 +253,6 @@ def _ensure_one(meta_ref: str, schema_dir: Path, dialect: str) -> dict:
             out["esteps"]["按 DDL 补列"] = f"补 {len(added)} 列" if added else "无缺失列"
     except Exception as exc:  # noqa: BLE001
         out["esteps"]["按 DDL 补列"] = f"失败: {exc}"
-
-    try:
-        from jiuwenswarm.channels.web.dataagent.metrics import db as metric_db
-        metric_db.ensure_semantic_columns(meta_ref)
-        out["esteps"]["dw_bi_metrics 语义层 6 列（模块接口兜底）"] = "已应用"
-    except Exception as exc:  # noqa: BLE001
-        out["esteps"]["dw_bi_metrics 语义层 6 列（模块接口兜底）"] = f"失败: {exc}"
 
     try:
         from jiuwenswarm.channels.web import inspection_service

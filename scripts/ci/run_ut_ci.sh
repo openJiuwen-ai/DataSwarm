@@ -187,14 +187,13 @@ python -c 'import jiuwenswarm; print(f"✅ jiuwenswarm 包可导入：{jiuwenswa
 }
 
 # ---------- 执行单元测试（build 内） ----------
-# 4 个 --ignore 为存量收集债务（组合树已知清单，修复属专项）：
-#   - dw_analysis_eval/ 7 例：依赖 .claude/skills 的 eval 脚本，不进 build（结构性不可收集）
+# 3 个 --ignore 为存量收集债务（组合树已知清单，修复属专项）：
 #   - test_looks_like_skill_package.py：基线自带测试，delta 改写的 send_file_to_user
 #     已无该公开符号
 #   - test_analysis_cte_scope.py / test_plan_shape_guard.py：0be1e4f 旧稿测试，
 #     import 从未定义过的符号
 mkdir -p "${OUT_DIR}"
-echo "[stage] pytest 开跑：$(pwd)/${TEST_DIR}（忽略 4 项存量收集债）"
+echo "[stage] pytest 开跑：$(pwd)/${TEST_DIR}（忽略 3 项存量收集债）"
 set +e
 python -m pytest "${TEST_DIR}" \
     --no-cov \
@@ -205,7 +204,6 @@ python -m pytest "${TEST_DIR}" \
     --self-contained-html \
     --junitxml="${REPORT_XML}" \
     --timeout=60 \
-    --ignore=tests/unit_tests/dw_analysis_eval \
     --ignore=tests/unit_tests/agentserver/test_looks_like_skill_package.py \
     --ignore=tests/unit_tests/dataagent/test_analysis_cte_scope.py \
     --ignore=tests/unit_tests/dataagent/test_plan_shape_guard.py

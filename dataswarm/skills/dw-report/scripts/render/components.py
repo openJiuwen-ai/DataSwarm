@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import html
 import re
+from decimal import Decimal, ROUND_HALF_UP, localcontext
 from typing import Any, Iterable
+
+from render.normalize import as_dicts, as_items, as_text_items
 
 
 def esc(value: Any) -> str:
@@ -27,22 +30,42 @@ def md_inline(value: Any) -> str:
     return text
 
 
+_DECIMAL_VALUE = re.compile(
+    r"^[+-]?(?:(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)\.\d+"
+    r"(?:[eE][+-]?\d+)?|(?:0|[1-9]\d*)[eE][+-]?\d+)(%|％)?$"
+)
+
+
 def fmt_value(value: Any) -> str:
-    """数值展示：千分位、去尾零。"""
+    """展示数值最多两位小数、去尾零；极小非零值保留三位有效数字。"""
     if value is None:
         return "—"
     if isinstance(value, bool):
         return "是" if value else "否"
-    if isinstance(value, (int, float)):
-        number = float(value)
-        if number.is_integer():
-            return f"{int(number):,}"
-        return f"{number:,.2f}".rstrip("0").rstrip(".")
-    return esc(value)
+    suffix = ""
+    if isinstance(value, str):
+        match = _DECIMAL_VALUE.fullmatch(value.strip())
+        if not match:
+            return esc(value)
+        suffix = match.group(1) or ""
+        value = value.strip().removesuffix(suffix).replace(",", "")
+    elif not isinstance(value, (int, float, Decimal)):
+        return esc(value)
+    number = Decimal(str(value))
+    if not number.is_finite():
+        return "—"
+    if not number:
+        return "0" + suffix
+    places = max(2, 2 - number.adjusted()) if abs(number) < Decimal("0.005") else 2
+    with localcontext() as context:
+        context.prec = max(28, len(number.as_tuple().digits), number.adjusted() + places + 2)
+        rounded = number.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+    return format(rounded, ",f").rstrip("0").rstrip(".") + suffix
 
 
 def _text_items(items: Iterable[Any]) -> list[Any]:
-    return [item for item in (items or []) if item not in (None, "")]
+    """文本条目归一化：字符串当单条，空值丢弃。"""
+    return as_text_items(items)
 
 
 def hero(spec: dict[str, Any]) -> str:
@@ -115,7 +138,7 @@ def bluf(summary: Iterable[Any]) -> str:
 def toc(sections: Iterable[dict[str, Any]]) -> str:
     """章节锚点。"""
     links = []
-    for index, section in enumerate(sections, 1):
+    for index, section in enumerate(as_dicts(sections), 1):
         sid = str(section.get("id") or f"s{index}")
         title = clean_title(section.get("title") or f"第 {index} 节")
         label = section.get("short") or (title if len(title) <= 14 else title[:14] + "…")
@@ -127,22 +150,17 @@ def toc(sections: Iterable[dict[str, Any]]) -> str:
 
 def narrative(items: Any) -> str:
     """解读段落。"""
-    if not items:
-        return ""
-    if isinstance(items, str):
-        items = [items]
-    blocks = [f"<p>{md_inline(item)}</p>" for item in items if item]
+    blocks = [f"<p>{md_inline(item)}</p>" for item in as_text_items(items)]
     return f'<div class="narrative">{"".join(blocks)}</div>' if blocks else ""
 
 
-def sql_details(sql: Any, label: str) -> str:
+def sql_details(sql: Any, label: str, method: str = "") -> str:
     """可折叠 SQL。"""
-    if not sql:
-        return ""
-    return (
+    sql_html = (
         f'<details class="sql"><summary>SQL · {esc(label)}</summary>'
         f"<pre>{esc(sql)}</pre></details>"
-    )
+    ) if sql else ""
+    return sql_html
 
 
 def chart_figure(chart_id: str, caption: str, hero: bool = False) -> str:
@@ -160,17 +178,25 @@ def table_html(table: dict[str, Any]) -> str:
     """明细表。支持 rows 为二维数组或对象数组。"""
     if not isinstance(table, dict):
         return ""
-    columns = [str(column) for column in (table.get("columns") or [])]
-    rows = table.get("rows") or []
+    columns = [str(column) for column in as_items(table.get("columns"))]
+    rows = as_items(table.get("rows"))
     if not columns and rows and isinstance(rows[0], dict):
         columns = list(rows[0].keys())
     if not columns:
         return ""
-    max_rows = int(table.get("max_rows") or 12)
+    try:
+        max_rows = max(1, int(table.get("max_rows") or 12))
+    except (TypeError, ValueError):
+        max_rows = 12
     shown = rows[:max_rows]
     body = []
     for row in shown:
-        cells = row if isinstance(row, (list, tuple)) else [row.get(column) for column in columns]
+        if isinstance(row, dict):
+            cells = [row.get(column) for column in columns]
+        elif isinstance(row, (list, tuple)):
+            cells = row
+        else:
+            cells = [row]
         body.append("<tr>" + "".join(f"<td>{fmt_value(cell)}</td>" for cell in cells) + "</tr>")
     head = "".join(f"<th>{esc(column)}</th>" for column in columns)
     note = ""
@@ -195,17 +221,17 @@ def insights(items: Iterable[Any]) -> str:
     for item in _text_items(items):
         if isinstance(item, dict):
             text = item.get("text")
-            hypothesis = item.get("hypothesis")
-            alternatives = item.get("alternative_checked") or []
+            hypothesis = item.get("hypothesis") or item.get("causal_language") == "driver_hypothesis"
+            alt_checked = as_text_items(item.get("alternative_checked"))
         else:
-            text, hypothesis, alternatives = item, False, []
+            text, hypothesis, alt_checked = item, False, []
         if not text:
             continue
         content = md_inline(text)
         if hypothesis:
             content += ' <span class="tag">假设</span>'
-        if alternatives:
-            joined = "；".join(str(value) for value in alternatives)
+        if alt_checked:
+            joined = "；".join(str(value) for value in alt_checked)
             content += f'<div class="alt-note">已排除的替代解释：{md_inline(joined)}</div>'
         lis.append(f"<li>{content}</li>")
     return block("综合洞察", f"<ul>{''.join(lis)}</ul>") if lis else ""
@@ -268,11 +294,11 @@ def compare_head(section: dict[str, Any]) -> str:
         item = compare.get(side)
         if not isinstance(item, dict):
             continue
-        rows = "".join(f"<li>{md_inline(text)}</li>" for text in item.get("items") or [])
+        rows = "".join(f"<li>{md_inline(text)}</li>" for text in as_text_items(item.get("items")))
         cols.append(
             '<div class="compare-col">'
             f'<span class="col-label">{esc(item.get("label") or "")}</span>'
-            f'<span class="big">{esc(item.get("value") or "")}'
+            f'<span class="big">{fmt_value(item.get("value"))}'
             + (f'<small style="font-size:13px;color:#8A94A6">{esc(item.get("unit") or "")}</small>'
                if item.get("unit") else "")
             + f"</span><ul>{rows}</ul></div>"
@@ -296,7 +322,7 @@ def banner(section: dict[str, Any]) -> str:
     return (
         '<div class="banner"><div>'
         f'<span class="banner-label">{esc(data.get("label") or "异常信号")}</span>'
-        f'<strong>{esc(data.get("value") or "")}</strong></div>'
+        f'<strong>{fmt_value(data.get("value"))}</strong></div>'
         f'<div class="banner-flow">{md_inline(data.get("flow") or "")}</div></div>'
     )
 
@@ -311,11 +337,16 @@ def drivers(section: dict[str, Any]) -> str:
         if not isinstance(item, dict):
             continue
         tag = f'<span class="tag">{esc(item.get("tag"))}</span>' if item.get("tag") else ""
+        value = item.get("value")
+        display = (
+            md_inline(value) if isinstance(value, str) and not _DECIMAL_VALUE.fullmatch(value.strip())
+            else fmt_value(value)
+        )
         cards.append(
             '<div class="driver">'
-            f'<span class="share">{esc(item.get("share") or "")}</span>'
+            f'<span class="share">{fmt_value(item.get("share"))}</span>'
             f'<strong>{md_inline(item.get("label") or "")}</strong>'
-            f'<p>{md_inline(item.get("value") or "")}</p>{tag}</div>'
+            f'<p>{display}</p>{tag}</div>'
         )
     return f'<section class="drivers">{"".join(cards)}</section>' if cards else ""
 
@@ -325,7 +356,7 @@ def alternatives(section: dict[str, Any]) -> str:
     items = _text_items(section.get("alternatives"))
     if not items:
         items = []
-        for raw in section.get("alternative_checked") or []:
+        for raw in as_text_items(section.get("alternative_checked")):
             text = str(raw)
             separator = "：" if "：" in text else (":" if ":" in text else "")
             if separator:

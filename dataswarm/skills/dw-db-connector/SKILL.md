@@ -6,8 +6,9 @@ allowed_tools: [bash, read_file]
 
 # dw-db-connector · 数据库连接能力
 
-> 本 skill 的脚本已撤销（方案 `docs/skill-cli-web-api-plan.md` §7.1）。
-> 连接层 `db_connector.py` 搬至 `jiuwenswarm/common/db_connector.py`，服务端 7 处 sys.path hack 改为正规 import；skill 侧不再持有任何连接代码。
+已采集的字段画像与统计通过 nl2sql 的召回材料 field_context 获取；分析会话使用 analysis_task 返回材料。表结构探查不提供画像消费入口，不查询内部画像元表代替召回。
+
+只问“有哪些表/表结构”时直接执行本技能的只读元数据命令，不进入完整分析或扫描业务值。缺少绑定返回现有配置缺口，不自动升级分析。“接入新数据源/建仓/写表”交对应功能并遵守现有授权，不能仅因出现“连库”就执行写操作。
 
 ## 现在怎么连库
 
@@ -74,6 +75,8 @@ python -m jiuwenswarm.cli.dwcli sql ddl --db-ref doris://<业务库名> \
 | EXPLAIN 执行计划（不拼 LIMIT） | `dwcli sql explain --db-ref <ref> --sql "..."` |
 | DDL/写操作（需 confirm） | `dwcli sql ddl --db-ref <ref> --sql "CREATE..." --confirm` |
 
+业务结果需要后续计算或报告时，用nl2sql的execute_sql.py保留完整CSV和预览。原始dwcli查询输出需缩短时，先保存完整JSON再解析预览，不截断JSON作为结果。
+
 ### 数据工作空间（必读）
 
 **禁止手动传 workspace 参数覆盖**：bash 子进程已自动注入 `JIUWENSWARM_WORKSPACE_ID`（= 用户在界面选中的数据工作空间），dwcli 会自动读取。任何手动传 `--workspace` / `--workspace-id` 的行为都会覆盖用户选择，属于错误操作。
@@ -90,9 +93,9 @@ dwcli datasource current    # 返回当前工作空间的 workspace_id/business_
 
 - 实际 ref 从 `dwcli datasource current` 查询获得（见上文「数据工作空间（必读）」），勿写死库名
 - `doris://<业务库名>` — 业务库（对应 workspace 的 `business_db_ref`）
-- `doris://<元数据库名>` — 系统元数据库（对应 workspace 的 `metadata_db_ref`，存 dw_* 表）
+- 系统元数据库使用实际返回的 `metadata_db_ref`，不推断它与业务源使用相同引擎。
 - `sqlite://path/to/x.db` — SQLite
-- 不传 `--db-ref` — dwcli 客户端自动填**系统元数据库 ref**（`metadata_db`），非业务库；查业务表须显式传业务库 ref
+- 不传 `--db-ref` — 正常使用当前工作空间的 `business_db_ref`；查询元库时显式传实际元库 ref，缺失工作空间或绑定按错误处理。
 
 ### 常用元数据查询
 
@@ -116,11 +119,10 @@ dwcli sql run --db-ref <meta_ref> \
 ```
 sqlite://path/to/x.db        SQLite（或裸路径）
 doris://host:9030/database    Doris（或 doris:// 用 DORIS_* 环境变量补全）
-doris://<元数据库名>          Doris 系统元数据库（= workspace 的 metadata_db_ref，指针自带库名）
 mysql://host:3306/database    MySQL（或 mysql:// 用 MYSQL_* 环境变量补全）
 ```
 
-元数据库将切换为 MySQL 系关系型库（业务库才用 Doris）——新代码方言无关，见方案 §7.5。
+当前元数据库支持 SQLite/MySQL；业务源可以是其他引擎。使用查询返回的 ref，不根据元库类型推断业务查询方言。
 
 ## 给其他 skill 的复用约定
 

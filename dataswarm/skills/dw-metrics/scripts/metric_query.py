@@ -41,6 +41,7 @@ _DW_COMMON_DIR = (Path(__file__).resolve().parent.parent.parent
 if str(_DW_COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(_DW_COMMON_DIR))
 import dw_paths  # noqa: E402
+from llm_json import load_file  # noqa: E402
 
 
 for _stream in (sys.stdout, sys.stderr):
@@ -368,7 +369,11 @@ def cmd_explore(args: argparse.Namespace) -> int:
         if not scope_path.is_file():
             _emit({"error": f"scope 文件不存在: {scope_path}"})
             return 1
-        body["subgraph_scope"] = json.loads(scope_path.read_text(encoding="utf-8"))
+        try:
+            body["subgraph_scope"] = load_file(scope_path)
+        except (OSError, ValueError) as exc:
+            _emit({"error": f"scope 文件无法解析: {scope_path}（{exc}）"})
+            return 1
     result = _dwcli(["metric-v2", "explore", "--json-file", "-"], json_body=body)
     if result.get("error"):
         _emit(result)

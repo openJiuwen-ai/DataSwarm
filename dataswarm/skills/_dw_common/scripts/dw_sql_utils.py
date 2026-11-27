@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 
 def _duckdb_table_name(location: str) -> str:
@@ -89,6 +89,10 @@ def parse_db_ref(db_ref: str) -> dict:
         if len(rest) >= 3 and rest[0] == "/" and rest[2] == ":":
             rest = rest[1:]
         return {"type": "sqlite", "path": rest}
+    if scheme == "redis":
+        parsed = urlsplit(db_ref)
+        return {"type": "redis", "execution_type": "duckdb", "host": parsed.hostname or "",
+                "port": parsed.port or 6379, "database": parsed.path.lstrip("/") or "0"}
     if scheme in ("doris", "mysql"):
         meta_flag = rest.strip() == "meta"
         body = "" if meta_flag else rest
@@ -110,6 +114,6 @@ def parse_db_ref(db_ref: str) -> dict:
 def quote_ident(db_ref: str, name: str) -> str:
     """按库类型给标识符加引号：sqlite/duckdb 用双引号，doris/mysql 用反引号。"""
     db_type = parse_db_ref(db_ref).get("type", "sqlite")
-    if db_type in ("sqlite", "duckdb"):
-        return f'"{name}"'
+    if db_type in ("sqlite", "duckdb", "redis"):
+        return '"' + name.replace('"', '""') + '"'
     return f"`{name}`"

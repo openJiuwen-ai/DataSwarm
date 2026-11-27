@@ -12,14 +12,16 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _db_client import query, emit, classify_error, failure  # noqa: E402
+from _db_client import preflight, emit, classify_error, failure  # noqa: E402
 
 
-def explain_sql(sql: str) -> dict:
+def explain_sql(sql: str, static_only: bool = False) -> dict:
     try:
-        result = query(f"EXPLAIN {sql}", limit=1000)
-        plan = "\n".join(str(r[0]) for r in result["rows"] if r)
-        return {"ok": True, "plan": plan, "estimated_rows": "unknown"}
+        result = preflight(sql, static_only=static_only)
+        if result.get("ok") is False:
+            return failure("SQL_ERROR", str(result.get("error")), stage="SQL_EXPLAIN")
+        plan = "\n".join(str(r[0]) for r in result.get("explain", []) if r)
+        return {**result, "ok": True, "plan": plan, "estimated_rows": "unknown"}
     except Exception as exc:
         kind, why, retry = classify_error(exc)
         # 阶段归因（方言收敛批次 2-G7）：本脚本错误发生在执行计划预检
@@ -29,8 +31,9 @@ def explain_sql(sql: str) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="SQL explain plan precheck")
     parser.add_argument("--sql", required=True)
+    parser.add_argument("--static-only", action="store_true", help="Validate syntax without database execution")
     args = parser.parse_args()
-    result = explain_sql(args.sql)
+    result = explain_sql(args.sql, static_only=args.static_only)
     if not result.get("ok"):
         print(json.dumps(result, ensure_ascii=True, default=str), file=sys.stderr)
         sys.exit(1)

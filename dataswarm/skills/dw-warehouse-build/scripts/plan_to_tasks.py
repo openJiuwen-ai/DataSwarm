@@ -77,6 +77,7 @@ else:
 
 import dw_type_map  # noqa: E402  # 语义类型映射唯一真相源（批次 1b G3）
 import dw_paths  # noqa: E402
+from llm_json import LLMJsonError, loads  # noqa: E402
 import dw_aggregate_check  # noqa: E402  # GROUP BY 聚合校验唯一真相源（批次 1b G8）
 
 
@@ -132,6 +133,19 @@ def _biz_is_mysql(workspace_id: str = "") -> bool:
 
 def _biz_is_duckdb(workspace_id: str = "") -> bool:
     return _biz_ref_for(workspace_id).startswith("duckdb://")
+
+
+# duckdb read_csv 只认自身编码名（ICU 别名表），plan 携带的是 Python codec 名
+# （infer 嗅探 open() 用），进 read_csv 前须转换：
+#   utf-8-sig → utf-8（utf-8 模式下 BOM 由 reader 自动剥离，实测）
+#   gbk → gb18030（duckdb 不认 'gbk' 裸名，InvalidInputException，实测 1.5.5；
+#     gb18030 双字节区与 GBK 完全一致，无损读 GBK 文件）
+_DUCKDB_ENCODING_ALIASES = {"utf-8-sig": "utf-8", "gbk": "gb18030"}
+
+
+def _duckdb_encoding(encoding: str) -> str:
+    """Python codec 编码名 → duckdb read_csv 认的编码名（其余原样透传）。"""
+    return _DUCKDB_ENCODING_ALIASES.get(encoding.lower(), encoding)
 
 
 # 当前工作空间（main 里从 argv/env 设置；list 包装以便全模块可变读取）
@@ -538,9 +552,8 @@ def _build_duckdb_csv_import_code(csv_path: str, table_short: str, ddl_sql: str,
     ref = _biz_ref_for(WORKSPACE_ID[0])
     csv_path = csv_path.replace("\\", "/")
     is_excel = csv_file.lower().endswith((".xlsx", ".xlsm", ".xls"))
-    # duckdb read_csv 只认自身编码名（utf-8/gbk...），utf-8-sig 是 Python codec 名；
-    # utf-8 模式下 BOM 由 reader 自动剥离（实测），gbk 原样可用。
-    encoding_param = "utf-8" if encoding.lower() in ("utf-8-sig", "utf-8") else encoding
+    # Python codec 名 → duckdb 编码名（utf-8-sig/gbk 转换，见 _duckdb_encoding）
+    encoding_param = _duckdb_encoding(encoding)
     if is_excel:
         # excel 无分隔符/编码参数；read_xlsx autoload excel 扩展
         sql_template = (
@@ -603,9 +616,8 @@ def _build_duckdb_ctas_sql(csv_dir: str, csv_file: str, table_short: str,
     裸值会被 parse_write_sql 判为语法错误。
     """
     csv_path = os.path.join(csv_dir, csv_file).replace("\\", "/")
-    # duckdb read_csv 只认自身编码名（utf-8/gbk...），utf-8-sig 是 Python codec 名；
-    # utf-8 模式下 BOM 由 reader 自动剥离（实测），gbk 原样可用。
-    encoding_param = "utf-8" if encoding.lower() in ("utf-8-sig", "utf-8") else encoding
+    # Python codec 名 → duckdb 编码名（utf-8-sig/gbk 转换，见 _duckdb_encoding）
+    encoding_param = _duckdb_encoding(encoding)
     if csv_file.lower().endswith((".xlsx", ".xlsm", ".xls")):
         # excel 无分隔符/编码参数；read_xlsx autoload excel 扩展
         return (
@@ -1731,16 +1743,16 @@ def main() -> int:
         spec_str = args.table_spec
         if not spec_str and args.table_spec_file:
             try:
-                spec_str = Path(args.table_spec_file).read_text(encoding="utf-8")
-            except OSError as e:
+                spec_str = Path(args.table_spec_file).read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeError) as e:
                 print(f"错误：--table-spec-file 读取失败: {e}", file=sys.stderr)
                 return 1
         if not spec_str:
             print("错误：append 模式需要 --table-spec 或 --table-spec-file 参数", file=sys.stderr)
             return 1
         try:
-            table_specs = json.loads(spec_str)
-        except json.JSONDecodeError as e:
+            table_specs = loads(spec_str)
+        except LLMJsonError as e:
             print(f"错误：--table-spec JSON 解析失败: {e}", file=sys.stderr)
             return 1
         if not isinstance(table_specs, list):

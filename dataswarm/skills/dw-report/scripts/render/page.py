@@ -1,4 +1,5 @@
 """页面级判定与页面壳渲染。"""
+
 from __future__ import annotations
 
 import json
@@ -8,21 +9,24 @@ from typing import Any
 
 from render import components as c
 from render.blocks import render_section, render_template
+from render.normalize import as_dicts, as_text_items, normalize_spec
+from report_context import context_errors
 
 
 def detect_page(spec: dict[str, Any]) -> str:
     """判定页面类型：answer / brief / analysis。"""
-    sections = spec.get("sections") or []
-    kpis = spec.get("kpis") or []
-    summary = spec.get("summary") or []
-    if len(sections) == 1 and (
-        spec.get("shape") in ("chart", "answer") or (not kpis and not summary)
-    ):
-        return "answer"
+    sections = as_dicts(spec.get("sections"))
+    if any(s.get("evidence_status") == "unverified" for s in sections):
+        return "analysis"
+    kpis = as_dicts((spec.get("kpis") or []))
+    summary = as_text_items((spec.get("summary") or []))
+    if len(sections) == 1 and (spec.get("shape") in ("chart", "answer") or (not kpis and not summary)):
+        return "analysis" if sections[0].get("supporting_tables") else "answer"
     has_chart = any(section.get("chart") not in (None, "", {}) for section in sections)
-    if spec.get("shape") == "lite" and len(sections) <= 3:
+    has_table = any(section.get("table") or section.get("_table") for section in sections)
+    if spec.get("shape") == "lite" and len(sections) <= 3 and not has_chart and not has_table:
         return "brief"
-    if len(sections) <= 2 and len(kpis) <= 3 and not spec.get("insights") and not has_chart:
+    if len(sections) <= 2 and len(kpis) <= 3 and not (spec.get("insights") or []) and not has_chart and not has_table:
         return "brief"
     return "analysis"
 
@@ -32,10 +36,8 @@ def _section_chart(section: dict[str, Any], index: int, charts: dict[str, Any]) 
     return charts.get(sid)
 
 
-def _analysis_body(
-    spec: dict[str, Any], charts: dict[str, Any]
-) -> tuple[str, list[dict[str, Any]]]:
-    sections = spec.get("sections") or []
+def _analysis_body(spec: dict[str, Any], charts: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+    sections = as_dicts(spec.get("sections"))
     cards: list[str] = []
     chart_items: list[dict[str, Any]] = []
     for index, section in enumerate(sections, 1):
@@ -46,22 +48,20 @@ def _analysis_body(
     body = render_template(
         "pages/analysis.html",
         hero=c.hero(spec),
-        kpis=c.kpis(spec.get("kpis") or []),
-        bluf=c.bluf(spec.get("summary") or []),
+        kpis=c.kpis((spec.get("kpis") or [])),
+        bluf=c.bluf((spec.get("summary") or [])),
         toc=c.toc(sections),
         sections="".join(cards),
-        insights=c.insights(spec.get("insights") or []),
-        actions=c.actions(spec.get("actions") or []),
-        limitations=c.limitations(spec.get("limitations") or []),
+        insights=c.insights((spec.get("insights") or [])),
+        actions=c.actions((spec.get("actions") or [])),
+        limitations=c.limitations((spec.get("limitations") or [])),
         footer=c.footer(spec),
     )
     return body, chart_items
 
 
-def _brief_body(
-    spec: dict[str, Any], charts: dict[str, Any]
-) -> tuple[str, list[dict[str, Any]]]:
-    sections = spec.get("sections") or []
+def _brief_body(spec: dict[str, Any], charts: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+    sections = as_dicts(spec.get("sections"))
     rows = []
     for index, section in enumerate(sections[:4], 1):
         delta = section.get("delta")
@@ -75,31 +75,29 @@ def _brief_body(
             f"{delta_html}</li>"
         )
     brief_html = (
-        '<section class="block"><h3>本周三件事</h3>'
-        f'<ol class="brief-list">{"".join(rows)}</ol></section>'
-        if rows else ""
+        f'<section class="block"><h3>本周三件事</h3><ol class="brief-list">{"".join(rows)}</ol></section>'
+        if rows
+        else ""
     )
     callout = spec.get("callout")
-    callout_html = (
-        f'<div class="callout"><strong>需要关注</strong>　{c.md_inline(callout)}</div>'
-        if callout else ""
-    )
+    callout_html = f'<div class="callout"><strong>需要关注</strong>　{c.md_inline(callout)}</div>' if callout else ""
     body = render_template(
         "pages/brief.html",
         hero=c.hero(spec),
-        kpis=c.kpis(spec.get("kpis") or []),
+        kpis=c.kpis((spec.get("kpis") or [])),
         brief_body=brief_html,
+        bluf=c.bluf(spec.get("summary") or []),
+        insights=c.insights(spec.get("insights") or []),
         callout=callout_html,
-        actions=c.actions(spec.get("actions") or [], title="下周动作"),
+        actions=c.actions((spec.get("actions") or []), title="下周动作"),
+        limitations=c.limitations(spec.get("limitations") or []),
         footer=c.footer(spec),
     )
     return body, []
 
 
-def _answer_body(
-    spec: dict[str, Any], charts: dict[str, Any]
-) -> tuple[str, list[dict[str, Any]]]:
-    sections = spec.get("sections") or []
+def _answer_body(spec: dict[str, Any], charts: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+    sections = as_dicts(spec.get("sections"))
     section = sections[0] if sections else {}
     sid = str(section.get("id") or "s1")
     option = charts.get(sid)
@@ -107,14 +105,20 @@ def _answer_body(
     chart_html = c.chart_figure(chart_id, f"图 1 · {section.get('title') or ''}", hero=True)
     answer_html = (
         f'<section class="sec"><p class="conclusion">{c.md_inline(section.get("conclusion") or "")}</p>'
-        f"{chart_html}"
+        f"{chart_html if option else ''}"
+        f"{c.table_html(section.get('_table') or section.get('table') or {})}"
         f"{c.narrative(section.get('narrative'))}"
-        f"{c.sql_details(section.get('sql'), '01')}</section>"
+        f"{c.sql_details(section.get('sql'), '01', section.get('computation_method', ''))}</section>"
     )
     body = render_template(
         "pages/answer.html",
         hero=c.hero(spec),
         answer_body=answer_html,
+        kpis=c.kpis(spec.get("kpis") or []),
+        bluf=c.bluf(spec.get("summary") or []),
+        insights=c.insights(spec.get("insights") or []),
+        actions=c.actions(spec.get("actions") or []),
+        limitations=c.limitations(spec.get("limitations") or []),
         footer=c.footer(spec),
     )
     item = {"id": chart_id, "option": option} if option else None
@@ -130,7 +134,8 @@ def chart_script(items: list[dict[str, Any]]) -> str:
         "var CHARTS = " + payload + ";\n"
         "var instances = CHARTS.map(function (item) {"
         "var el = document.getElementById(item.id); if (!el) { return null; }"
-        "var chart = echarts.init(el); chart.setOption(item.option); return chart;"
+        "var chart = echarts.init(el); dwReportFormatChartOption(item.option);"
+        "chart.setOption(item.option); return chart;"
         "}).filter(function (chart) { return chart !== null; });\n"
         "window.addEventListener('resize', function () {"
         "instances.forEach(function (chart) { chart.resize(); }); });\n"
@@ -139,6 +144,10 @@ def chart_script(items: list[dict[str, Any]]) -> str:
 
 def render_html(spec: dict[str, Any], charts: dict[str, Any], assets: Path) -> str:
     """渲染完整 HTML（ECharts 仍为占位符，由 inline_assets 替换）。"""
+    spec = normalize_spec(spec)
+    errors = context_errors(spec)
+    if errors:
+        raise ValueError("; ".join(errors))
     spec.setdefault("generated_at", datetime.now().strftime("%Y-%m-%d %H:%M"))
     page = detect_page(spec)
     if page == "answer":
@@ -149,7 +158,7 @@ def render_html(spec: dict[str, Any], charts: dict[str, Any], assets: Path) -> s
         body, items = _analysis_body(spec, charts)
     css = (assets / "report.css").read_text(encoding="utf-8")
     js = (assets / "report.js").read_text(encoding="utf-8")
-    return render_template(
+    html = render_template(
         "base.html",
         title=c.esc(spec.get("title") or "数据报告"),
         echarts='<script src="__ECHARTS__"></script>',
@@ -158,3 +167,24 @@ def render_html(spec: dict[str, Any], charts: dict[str, Any], assets: Path) -> s
         body_class=f"page-{page}",
         js=js + "\n" + chart_script(items),
     )
+    if not spec.get("analysis_id"):
+        if spec.get("report_type") == "standalone":
+            html = html.replace("</head>", '<meta name="dw-report-type" content="standalone">\n</head>', 1)
+        return html
+    gate = (
+        '<script id="analysis-evidence-gate" type="application/json">'
+        + json.dumps(
+            {
+                "analysis_id": spec["analysis_id"],
+                "manifest_path": spec.get("manifest_path"),
+                "spec_hash": spec.get("_evidence_spec_hash"),
+                "report_gate": spec.get("report_gate"),
+            },
+            ensure_ascii=False,
+        ).replace("<", "\\u003c")
+        + "</script>"
+    )
+    before, closing, after = html.rpartition("</body>")
+    if not closing:
+        raise ValueError("report template is missing </body>")
+    return before + gate + closing + after

@@ -4,12 +4,12 @@ import csv
 import json
 import os
 import sys
-import time
+import tempfile
 
 # 固定标准输出编码，不跟系统 locale（中文 Windows 是 cp936）走，见 _db_client.py
 for _stream in (sys.stdout, sys.stderr):
     try:
-        _stream.reconfigure(encoding="utf-8", errors="replace")
+        getattr(_stream, "reconfigure")(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -23,16 +23,13 @@ HEAD_ROWS = 10  # export.head 携带的行数（不含表头）
 def execute_sql(sql: str) -> dict:
     try:
         result = query(sql, limit=100000)
-        columns = [
-            {"name": c, "type": "", "comment": ""}
-            for c in result["columns"]
-        ]
+        columns = [{"name": c, "type": "", "comment": ""} for c in result["columns"]]
         rows = result["rows"]
 
-        ts = int(time.time())
-        csv_path = (f"/tmp/query_result_{ts}.csv" if os.name != "nt"
-                    else os.path.join(os.environ.get("TEMP", "/tmp"), f"query_result_{ts}.csv"))
-        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", prefix="query_result_", suffix=".csv", delete=False, newline="", encoding="utf-8"
+        ) as f:
+            csv_path = f.name
             writer = csv.writer(f)
             writer.writerow([c["name"] for c in columns])
             for row in rows:
@@ -41,8 +38,10 @@ def execute_sql(sql: str) -> dict:
         head = [[str(v) if v is not None else "" for v in row] for row in rows[:HEAD_ROWS]]
         return {
             "ok": True,
+            **{key: value for key, value in result.items() if key not in {"rows", "columns", "db"}},
             "sql": sql,
             "row_count": len(rows),
+            "truncated": bool(result.get("truncated")),
             "columns": columns,
             "export": {"file": csv_path, "head": head},
         }

@@ -1,12 +1,22 @@
 CREATE TABLE IF NOT EXISTS "dw_semantic_profile" (
-  "column_id" TEXT PRIMARY KEY,
+  "profile_id" TEXT PRIMARY KEY,
+  "column_id" TEXT NOT NULL,
+  "snapshot_id" TEXT NOT NULL,
+  "run_id" TEXT NOT NULL,
   "source_id" TEXT NOT NULL,
   "table_id" TEXT NOT NULL,
   "null_ratio" REAL,
   "distinct_count" INTEGER,
   "top_k_json" TEXT,
+  "numeric_json" TEXT,
   "is_sensitive" INTEGER NOT NULL DEFAULT 0,
   "sensitivity_class" TEXT,
   "profile_version" TEXT,
-  "observed_at" TEXT NOT NULL
+  "profile_schema_version" INTEGER NOT NULL DEFAULT 1,
+  "observed_at" TEXT NOT NULL,
+  "sample_rows" INTEGER,
+  "population_scope" TEXT NOT NULL,
+  "complete" INTEGER NOT NULL DEFAULT 0,
+  "collection_status" TEXT NOT NULL,
+  UNIQUE ("snapshot_id", "column_id")
 );

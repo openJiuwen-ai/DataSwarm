@@ -24,6 +24,7 @@
 - 位置 `tests/unit_tests/`，命名 `test_*.py`，按模块分目录（`orchestration/`、`web/`、
   `agents/`、`dataagent/`、`dw_*` 技能域等）
 - 异步测试 `--asyncio-mode=auto`（`pytest.ini` 已配置）
+- 验证所有可选数据源类型可用性的测试使用 `uv run --all-extras pytest ...`；无对应驱动时类型被标为不可用是预期行为。
 - **本机注意**：pytest-cov 全包收尾在 Windows 上极慢，日常加 `--no-cov`，
   收口时再跑覆盖率
 - `pytest.ini` 配置了 `filterwarnings = error`——第三方库首跑可能报
@@ -35,6 +36,9 @@
 ```bash
 cd jiuwenswarm/channels/web/frontend
 npm run test:chat-navigation            # 按 package.json 的 test:* 脚本选择
+npm run test:datasource-create-api      # 创建数据源 200/400/409 响应与换绑失败信息
+npm run lint                           # 仅检查暂存区/工作区改动和新增的前端 JS/TS 文件
+npm run lint -- src/path/to/file.ts    # 已提交代码或无 Git 快照可显式指定文件
 node --test tests/xxx.test.mjs          # 单文件
 npm run build                           # 改前端后的类型检查与构建门禁
 ```

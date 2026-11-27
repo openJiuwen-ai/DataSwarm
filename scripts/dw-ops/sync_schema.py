@@ -18,7 +18,7 @@ import shutil
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SRC = REPO_ROOT / "deploy" / "schema"
 # 运行时副本目录跟随数据根（JIUWENSWARM_DATA_DIR 优先，无 env 回退 ~/.jiuwenswarm）：
 # 必须与 ensure.py 的 _runtime_deploy_schema_dir 同一推导——本脚本刷新的副本正是
@@ -32,6 +32,10 @@ def main() -> int:
     ap.add_argument("--src", type=Path, default=DEFAULT_SRC)
     ap.add_argument("--dst", type=Path, default=DEFAULT_DST)
     args = ap.parse_args()
+    args.src, args.dst = args.src.resolve(), args.dst.resolve()
+    if args.src == args.dst or args.dst in args.src.parents or args.src in args.dst.parents:
+        print("[ERROR] schema source and destination must be disjoint", file=sys.stderr)
+        return 1
     if not (args.src / "ddl").is_dir():
         print(f"[ERROR] 源目录缺少 ddl/: {args.src}", file=sys.stderr)
         return 1
@@ -44,6 +48,8 @@ def main() -> int:
         if existing.is_file():
             rel = existing.relative_to(args.dst)
             if not (args.src / rel).exists():
+                if not existing.resolve().is_relative_to(args.dst):
+                    raise ValueError("schema target escaped destination")
                 existing.unlink()
                 removed += 1
     for empty_dir in sorted((d for d in args.dst.rglob("*") if d.is_dir()),

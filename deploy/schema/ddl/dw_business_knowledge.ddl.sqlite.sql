@@ -4,6 +4,9 @@ CREATE TABLE IF NOT EXISTS "dw_business_knowledge" (
   "asset_type" TEXT NOT NULL,
   "title" TEXT NOT NULL,
   "content" TEXT NOT NULL,
+  "payload_version" INTEGER NOT NULL DEFAULT 1,
+  "payload_json" TEXT NOT NULL DEFAULT '{}',
+  "validation_json" TEXT NOT NULL DEFAULT '{}',
   "scope_json" TEXT NOT NULL DEFAULT '{}',
   "source_json" TEXT NOT NULL DEFAULT '{}',
   "status" TEXT NOT NULL DEFAULT 'candidate',
@@ -11,5 +14,7 @@ CREATE TABLE IF NOT EXISTS "dw_business_knowledge" (
   "owner" TEXT NOT NULL DEFAULT '',
   "created_at" TEXT NOT NULL,
   "updated_at" TEXT NOT NULL,
-  "published_at" TEXT NOT NULL DEFAULT ''
+  "published_at" TEXT NOT NULL DEFAULT '',
+  "active" INTEGER NOT NULL DEFAULT 1,
+  "source_ref" TEXT NOT NULL DEFAULT ''
 );

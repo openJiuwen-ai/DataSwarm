@@ -6,8 +6,8 @@
 
     python analyzer.py <op> --data <csv> --params '<json>'
 
-op 共六个：trend_profile / outlier_scan / dim_breakdown / dim_rank /
-formula_breakdown / driver_correlation。formula_breakdown 只读 --params，
+op 包括通用表格运算以及走势、离群、维度/公式拆解和相关性。
+formula_breakdown 只读 --params，
 其余 op 读取 --data 指定的 CSV。
 
 输入 CSV 应已是目标列与目标粒度；派生比率、重采样、过滤、关联由上游取数完成，
@@ -22,6 +22,9 @@ from __future__ import annotations
 
 import argparse
 import ast
+import csv
+import hashlib
+import importlib.util
 import json
 import math
 import sys
@@ -344,7 +347,10 @@ def op_outlier_scan(df: pd.DataFrame, p: dict) -> dict:
     # 标记日留在序列里参与去趋势，只在估计基线与报告离群时排除
     keep = pd.Series(True, index=work.index)
     if flag_f:
-        keep = ~work[flag_f].astype(bool)
+        flags = work[flag_f].astype("string").str.lower()
+        if not flags.isin(["0", "1", "true", "false", "", "0.0", "1.0"]).all():
+            return _fail("invalid_request", "skip_flag_field requires boolean or 0/1 values")
+        keep = ~flags.isin(["1", "true", "1.0"])
     skipped = int((~keep).sum())
     if int(keep.sum()) < 3:
         return _fail("too_few_rows",
@@ -548,18 +554,14 @@ def _breakdown_guidance(bd: dict) -> str:
     if not bd["net_share_reliable"]:
         return (f"净变动很小（净/毛 {bd['net_to_gross']}），内部结构变化明显。"
                 "叙述时不要使用 net_share_pct；按 drivers 与 detractors 两侧分别陈述，"
-                "用 gross_share_pct 表示各自占变动总量的份额。")
+                "用 gross_share_pct 表示各自占绝对变化总量的有符号份额。")
     if bd["divergence_pp"] < DIVERGENCE_MID:
         return (f"成员变化率高度同步（离散度 {bd['divergence_pp']} 个百分点），"
-                "按该维度拆解未找到集中解释，本次波动更可能来自整体因素；不要在此维度上给出主因结论。")
-    top = bd.get("max_gross_share_pct")
-    tail = ""
-    if isinstance(top, (int, float)) and top >= 50:
-        tail = (f"；结论需带未解释部分——「{bd['most_divergent_member']}」占变动总量的 {top}%，"
-                f"其余 {round(100 - top, 1)}% 分散在其他成员")
+                "这只描述当前维度的变化率分化，不证明变化来自整体因素，也不确定具体成因。")
     return (f"离散度{bd['divergence_level']}（{bd['divergence_pp']} 个百分点），"
             f"偏离整体最多的是「{bd['most_divergent_member']}」，"
-            "可从 detractors / drivers 首位展开并附证据" + tail + "。")
+            "可结合实际变化量检查 detractors / drivers；gross_share_pct 的分母为绝对变化总量，"
+            "贡献分解不证明因果或未解释比例。")
 
 
 def op_dim_breakdown(df: pd.DataFrame, p: dict) -> dict:
@@ -755,7 +757,7 @@ def op_formula_breakdown(p: dict) -> dict:
         ck.close_to("净占比闭合", sum(t["net_share_pct"] for t in terms), 100.0, 0.02)
     else:
         ck.add("因子涨跌相抵，净占比不可用", False, "warn", _r(ratio, 3), f"≥{NET_GROSS_FLOOR}",
-               "改用 gross_share_pct 表述各因子占变动总量的份额")
+               "改用 gross_share_pct 表述各因子占绝对变化总量的有符号份额")
     ck.close_to("公式差值自洽", v1 - v0, net, 1e-6)
     ck.add("leading_term 为效应最大者",
            terms[0]["term"] == max(terms, key=lambda t: abs(t["effect"]))["term"],
@@ -772,7 +774,7 @@ def op_formula_breakdown(p: dict) -> dict:
                            or (f"精确 Shapley（{len(base)} 个因子，枚举 {2 ** len(base)} 个子集）"
                                if algorithm == "shapley" and not requested else f"按请求使用 {algorithm}")),
         "guidance": ("各因子涨跌基本相抵、净变动接近 0，叙述时不要使用 net_share_pct；"
-                     "请说明「总量变化不大，但构成在调整」，并用 gross_share_pct 陈述"
+                     "请说明实际净变化与各因子效应；gross_share_pct 为占绝对变化总量的有符号份额"
                      if not reliable else
                      f"效应最大的因子为「{terms[0]['term']}」，可按 effect 展开叙述"),
         "terms": terms, "leading_term": terms[0]["term"],
@@ -873,8 +875,8 @@ def op_driver_correlation(df: pd.DataFrame, p: dict) -> dict:
                 "controls": controls,
                 "coef_after_control": _r(coef_c, 4), "p_after_control": _r(p_c, 6),
                 "holds_after_control": bool(p_c < alpha),
-                "reading": ("控制后仍显著，关联较稳健" if p_c < alpha
-                            else "控制后不再显著，原关联更可能来自控制变量"),
+                "reading": ("在所列控制变量与方法下仍显著，仍可能有未观测混杂，不能据此证明因果" if p_c < alpha
+                            else "控制后不再显著，当前证据不足以支持控制后的关联，不能据此确定原关联成因"),
             }
         pairs.append(item)
     pairs.sort(key=lambda i: (i["coef"] is None, -abs(i["coef"] or 0.0)))   # 系数无定义的排最后
@@ -919,9 +921,21 @@ def op_driver_correlation(df: pd.DataFrame, p: dict) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# 分发
+# 通用表格运算与分发
 # ══════════════════════════════════════════════════════════════════════
+def op_table_ops(df: pd.DataFrame, params: dict, *, inputs: dict[str, pd.DataFrame] | None = None) -> dict:
+    """Use the same standalone implementation for CLI and evidence computations."""
+    path = Path(__file__).with_name("table_ops.py")
+    spec = importlib.util.spec_from_file_location("dataswarm_table_ops", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("table_ops implementation could not be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.run(df, params, inputs=inputs)
+
+
 TABLE_OPS = {
+    "table_ops": op_table_ops,
     "trend_profile": op_trend_profile,
     "outlier_scan": op_outlier_scan,
     "dim_breakdown": op_dim_breakdown,
@@ -945,10 +959,10 @@ def run(op: str, data_path: str | None, params: dict) -> dict:
     if not path.exists():
         return _fail("invalid_request", f"CSV 不存在：{data_path}")
     try:
-        df = pd.read_csv(path)
+        df = pd.read_csv(path, dtype=str, keep_default_na=False)
     except Exception as exc:                                       # noqa: BLE001
         return _fail("invalid_request", f"CSV 读取失败：{exc}")
-    if df.empty:
+    if df.empty and op != "table_ops":
         return _fail("too_few_rows", "CSV 为空")
     return TABLE_OPS[op](df, params)
 
@@ -1077,12 +1091,33 @@ def _emit(body: dict) -> None:
     print(json.dumps(body, ensure_ascii=True, default=str))
 
 
+def export_tables(body: dict, data_path: str, output_dir: str, op: str, params: dict,
+                  input_hash: str) -> dict:
+    """Export successful table results with reproducible input and method metadata."""
+    source = Path(data_path).resolve()
+    if hashlib.sha256(source.read_bytes()).hexdigest() != input_hash:
+        raise ValueError("input CSV changed during computation")
+    folder = Path(output_dir).resolve()
+    folder.mkdir(parents=True, exist_ok=True)
+    outputs = []
+    for index, (name, table) in enumerate(body.get("tables", {}).items()):
+        path = folder / f"result-{index + 1}.csv"
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(table["columns"])
+            writer.writerows(table["rows"])
+        outputs.append({"name": name, "file": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+    return {**body, "computation": {"input_file": str(source), "input_sha256": input_hash,
+                                    "op": op, "params": params, "outputs": outputs}}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="data-insight 统计算子")
     ap.add_argument("op", nargs="?", help=f"算子名：{', '.join(ALL_OPS)}")
     ap.add_argument("--op", dest="op_flag", help=argparse.SUPPRESS)          # 旧写法
     ap.add_argument("--data", "--csv_path", dest="data", help="CSV 路径")
     ap.add_argument("--params", "--args", dest="params", default="{}", help="JSON 参数")
+    ap.add_argument("--output-dir", help="导出表格CSV，并返回输入hash、方法和输出hash")
     cli = ap.parse_args(argv)
 
     op = cli.op or cli.op_flag
@@ -1099,7 +1134,15 @@ def main(argv: list[str] | None = None) -> int:
         _emit(_fail("invalid_request", f"--params 解析失败：{exc}", op=canonical))
         return 2
 
-    body = run(canonical, cli.data, params)
+    try:
+        input_hash = hashlib.sha256(Path(cli.data).read_bytes()).hexdigest() if cli.output_dir and cli.data else ""
+        body = run(canonical, cli.data, params)
+        if cli.output_dir and body.get("status") == "ok":
+            if not input_hash or not body.get("tables"):
+                raise ValueError("--output-dir requires a CSV input and table outputs")
+            body = export_tables(body, cli.data, cli.output_dir, canonical, params, input_hash)
+    except (OSError, ValueError) as exc:
+        body = _fail("invalid_request", str(exc), op=canonical)
     body.setdefault("op", canonical)
     _emit(body)
     return 0 if body.get("status") == "ok" else 1

@@ -15,6 +15,7 @@ error_phase 三值（输出统一阶段归因，帮 Agent 判断失败发生在�
 from __future__ import annotations
 
 import re
+import subprocess
 
 # SQL 执行错误分类（error_phase=SQL_EXECUTION）
 _TABLE_NOT_FOUND_RE = re.compile(
@@ -46,6 +47,8 @@ def classify_error(exc: Exception) -> tuple[str, str, bool]:
 
     if _has_code(1142, 1143) or "Access denied" in msg:
         return "PERMISSION_DENIED", msg, False
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return "SERVICE_TIMEOUT", "CLI service request timed out", True
     if _has_code(3024, 20101) or "Query timeout" in msg:
         return "TIMEOUT", msg, True
     if _AMBIGUOUS_TABLE_RE.search(msg):
@@ -69,6 +72,7 @@ SUGGESTIONS: dict[str, str] = {
     "COLUMN_NOT_FOUND": "确认列名拼写，用 get_schema.py 重新拉取表结构",
     "SYNTAX_ERROR": "检查 SQL 语法，参考 SQL 方言注意事项",
     "TIMEOUT": "添加 LIMIT 或收紧 WHERE 条件后重试",
+    "SERVICE_TIMEOUT": "确认服务可达后重试当前读取，不修改查询口径或过滤条件",
     "UNKNOWN": "查看数据库日志或重试",
 }
 
