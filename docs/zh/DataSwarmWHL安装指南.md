@@ -4,8 +4,8 @@
 > 三步可用（`pip install` → `dataswarm-init` → `dataswarm-start`）。适用于
 > 服务器部署、CLI 场景或希望用自有 Python 环境的用户。
 >
-> 本文介绍 **whl 包**（pip 安装形态）。基座 JiuwenSwarm 通用安装方式见
-> [安装指南](安装指南.md)。
+> 本文介绍 **whl 包**（pip 安装形态）。基座 JiuwenSwarm（`openjiuwen`
+> 依赖）会在 `pip install` 时自动安装，无需单独安装基座。
 >
 > **英文版：** [English Version](../en/DataSwarmInstallGuideWHL.md)
 
